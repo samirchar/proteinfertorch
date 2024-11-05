@@ -1,0 +1,1 @@
+Unofficial PyTorch version of ProteInfer, originally implemented in TensorFlow 1.X and converted for PyTorch compatibility.
