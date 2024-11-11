@@ -51,10 +51,6 @@ def collate_variable_sequence_length(
             )
         )
 
-        # Use the sampled labels for each element in the batch.
-        if sampled_label_indices is not None:
-            label_multihots = label_multihots[sampled_label_indices]
-
         # Append the other values to the processed lists
         processed_sequence_ids.append(sequence_id)
         processed_sequence_lengths.append(sequence_length)
@@ -64,8 +60,7 @@ def collate_variable_sequence_length(
         "sequence_onehots": torch.stack(processed_sequence_onehots),
         "sequence_ids": processed_sequence_ids,
         "sequence_lengths": torch.stack(processed_sequence_lengths),
-        "label_embeddings": processed_label_embeddings,
-        "label_token_counts": label_token_counts,
+        "label_embeddings": processed_label_embeddings
     }
 
     if return_label_multihots:
