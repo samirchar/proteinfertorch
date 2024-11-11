@@ -1,8 +1,6 @@
-from protnote.data.datasets import ProteinDataset, create_multiple_loaders
-from protnote.utils.configs import get_setup
-from protnote.models.protein_encoders import ProteInfer
-from protnote.utils.evaluation import EvalMetrics, save_evaluation_results
-from protnote.utils.data import read_json
+from proteinfertorch.data import ProteinDataset, create_multiple_loaders
+from proteinfertorch.proteinfer import ProteInfer
+from proteinfertorch.utils import read_json, generate_vocabularies
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -12,29 +10,25 @@ import re
 from collections import defaultdict
 from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC
 from torch.cuda.amp import autocast
-from protnote.utils.data import generate_vocabularies
 
-
-"""
-sample usage: python test_proteinfer.py --validation-path-name VAL_DATA_PATH --full-path-name FULL_DATA_PATH
-"""
-
-# Set the TOKENIZERS_PARALLELISM environment variable to False
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+logger = get_logger()
 
 # Argument parser setup
-parser = argparse.ArgumentParser(description="Train and/or Test the ProtNote model.")
+parser = argparse.ArgumentParser(description="Train and/or Test the ProteInfer model.")
 
-
-parser.add_argument("--train-path-name", type=str)
-
-parser.add_argument("--validation-path-name", type=str)
 
 parser.add_argument(
-    "--test-paths-names",
-    nargs="+",
+    "--data-path",
     type=str,
-    help="Specify all the desired test paths names to test the model using names from config file to test. If not provided, model will not be tested.",
+    required=True,
+    help="Path to the data file"
+)
+
+parser.add_argument(
+    "--vocabulary-path",
+    type=str,
+    required=True,
+    help="Path to the vocabulary file"
 )
 
 parser.add_argument(
@@ -43,31 +37,30 @@ parser.add_argument(
     default="ProteInfer",
     help="Name of the W&B run. If not provided, a name will be generated.",
 )
-
 parser.add_argument(
     "--threshold",
     type=float,
     default=0.5
 )
-
 parser.add_argument(
-    "--proteinfer-weights",
+    "--weights-path",
     type=str,
     default="GO",
     help="Which model weights to use: GO or EC",
 )
 
 parser.add_argument(
-    "--model-weights-id",
-    type=int,
-    default=None,
-    help="The model id if any. If not specified will pick the same one always.",
+    "--deduplicate",
+    action="store_true",
+    default=False,
+    help="Deduplicate sequences in the dataset",
 )
 
 parser.add_argument(
-    "--override",
-    nargs="*",
-    help="Override config parameters in key-value pairs."
+    "--max-sequence-length",
+    type=int,
+    default=float("inf"),
+    help="Maximum sequence length to consider",
 )
 
 parser.add_argument(
@@ -77,111 +70,20 @@ parser.add_argument(
     help="Save predictions and ground truth dataframe for validation and/or test",
 )
 
-parser.add_argument(
-    "--only-inference",
-    action="store_true",
-    default=False,
-    help="Whether to only predict without testing and computing metrics",
-)
-
-parser.add_argument(
-    "--only-represented-labels",
-    action="store_true",
-    default=False,
-    help="Whether to only predict labels that are represented in the dataset",
-)
-
-parser.add_argument(
-    "--annotations-path-name",
-    type=str,
-    default="GO_ANNOTATIONS_PATH",
-    help="Name of the annotation path. Defaults to GO.",
-)
-
-parser.add_argument(
-    "--base-label-embedding-name",
-    type=str,
-    default="GO_BASE_LABEL_EMBEDDING_PATH",
-    help="Name of the base label embedding path. Defaults to GO.",
-)
-
-
-# TODO: Add an option to serialize and save config with a name corresponding to the model save path
-
 args = parser.parse_args()
-
 
 def to_device(device, *args):
     return [
         item.to(device) if isinstance(item, torch.Tensor) else None for item in args
     ]
 
-
-if args.override:
-    args.override += ["WEIGHTED_SAMPLING", "False", "TEST_BATCH_SIZE", 4]
-else:
-    args.override = ["WEIGHTED_SAMPLING", "False", "TEST_BATCH_SIZE", 4]
-
-
-task = args.annotations_path_name.split("_")[0]
-config = get_setup(
-    config_path=project_root / 'configs' / 'base_config.yaml',
-    run_name=args.name,
-    train_path_name=args.train_path_name,
-    val_path_name=args.validation_path_name,
-    test_paths_names=args.test_paths_names,
-    annotations_path_name=args.annotations_path_name,
-    base_label_embedding_name=args.base_label_embedding_name,
-    amlt=False,
-    is_master=True,
-    overrides=args.override + ["EXTRACT_VOCABULARIES_FROM", "null"]
-    if args.only_represented_labels
-    else args.override,
-)
-params, paths, timestamp, logger = (
-    config["params"],
-    config["paths"],
-    config["timestamp"],
-    config["logger"],
-)
-
-
-# Create datasets
-train_dataset = (
-    ProteinDataset(
-        data_paths=config["dataset_paths"]["train"][0],
-        config=config,
-        logger=logger,
-        require_label_idxs=params["GRID_SAMPLER"],
-        label_tokenizer=None,
-    )
-    if args.train_path_name is not None
-    else None
-)
-
-validation_dataset = (
-    ProteinDataset(
-        data_paths=config["dataset_paths"]["validation"][0],
-        config=config,
-        logger=logger,
-        require_label_idxs=False,  # Label indices are not required for validation.
-        label_tokenizer=None,
-    )
-    if args.validation_path_name is not None
-    else None
-)
-
-test_dataset = (
-    ProteinDataset(
-        data_paths=config["dataset_paths"]["test"][0],
-        config=config,
-        logger=logger,
-        require_label_idxs=False,  # Label indices are not required for testing
-        label_tokenizer=None,
-    )
-    if args.test_paths_names is not None
-    else None
-)
+test_dataset = ProteinDataset(
+        data_path = args.data_path,
+        vocabulary_path = args.vocabulary_path,
+        deduplicate = args.deduplicate,
+        max_sequence_length = args.max_sequence_length,
+        logger=None
+        )
 
 # Add datasets to a dictionary
 # TODO: This does not support multiple datasets. But I think we should remove that support anyway. Too complicated.

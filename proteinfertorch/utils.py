@@ -2,6 +2,22 @@ import numpy as np
 import collections
 import torch
 import pickle
+from Bio import SeqIO
+from Bio.Seq import Seq
+import json
+from Bio.SeqRecord import SeqRecord
+
+
+
+def read_json(data_path: str):
+    with open(data_path, "r") as file:
+        data = json.load(file)
+    return data
+
+
+def write_json(data, data_path: str):
+    with open(data_path, "w") as file:
+        json.dump(data, file)
 
 
 def read_pickle(file_path: str):
@@ -9,6 +25,91 @@ def read_pickle(file_path: str):
         item = pickle.load(p)
     return item
 
+
+def read_fasta(data_path: str, sep=" "):
+    """
+    Reads a FASTA file and returns a list of tuples containing sequences, ids, and labels.
+    """
+    sequences_with_ids_and_labels = []
+
+    for record in SeqIO.parse(data_path, "fasta"):
+        sequence = str(record.seq)
+        components = record.description.split(sep)
+        # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
+        sequence_id = components[0]
+        labels = components[1:]
+
+        # Return a tuple of sequence, sequence_id, and labels
+        sequences_with_ids_and_labels.append((sequence, sequence_id, labels))
+    return sequences_with_ids_and_labels
+
+
+
+def save_to_pickle(item, file_path: str):
+    with open(file_path, "wb") as p:
+        pickle.dump(item, p)
+
+
+def save_to_fasta(sequence_id_labels_tuples, output_file):
+    """
+    Save a list of tuples in the form (sequence, [labels]) to a FASTA file.
+
+    :param sequence_label_tuples: List of tuples containing sequences and labels
+    :param output_file: Path to the output FASTA file
+    """
+    records = []
+    for _, (
+        sequence,
+        id,
+        labels,
+    ) in enumerate(sequence_id_labels_tuples):
+        # Create a description from labels, joined by space
+        description = " ".join(labels)
+
+        record = SeqRecord(Seq(sequence), id=id, description=description)
+        records.append(record)
+
+    # Write the SeqRecord objects to a FASTA file
+    with open(output_file, "w") as output_handle:
+        SeqIO.write(records, output_handle, "fasta")
+        print("Saved FASTA file to " + output_file)
+
+def get_vocab_mappings(vocabulary):
+    assert len(vocabulary) == len(set(vocabulary)), "items in vocabulary must be unique"
+    term2int = {term: idx for idx, term in enumerate(vocabulary)}
+    int2term = {idx: term for term, idx in term2int.items()}
+    return term2int, int2term
+
+
+def generate_vocabularies(file_path: str = None, data: list = None) -> dict:
+    """
+    Generate vocabularies based on the provided data path.
+    path must be .fasta file
+    """
+    if not ((file_path is None) ^ (data is None)):
+        raise ValueError("Only one of file_path OR data must be passed, not both.")
+    vocabs = {
+        "amino_acid_vocab": set(),
+        "label_vocab": set(),
+        "sequence_id_vocab": set(),
+    }
+    if file_path is not None:
+        if isinstance(file_path, str):
+            data = read_fasta(file_path)
+        else:
+            raise TypeError(
+                "File not supported, vocabularies can only be generated from .fasta files."
+            )
+
+    for sequence, sequence_id, labels in data:
+        vocabs["sequence_id_vocab"].add(sequence_id)
+        vocabs["label_vocab"].update(labels)
+        vocabs["amino_acid_vocab"].update(list(sequence))
+
+    for vocab_type in vocabs.keys():
+        vocabs[vocab_type] = sorted(list(vocabs[vocab_type]))
+
+    return vocabs
 
 def transfer_tf_weights_to_torch(torch_model: torch.nn.Module, tf_weights_path: str):
     # Load tensorflow variables. Remove global step variable and add it as num_batches variable for each batchnorm

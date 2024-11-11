@@ -10,9 +10,8 @@ import pandas as pd
 import numpy as np
 import blosum as bl
 from torch.utils.data import Dataset, DataLoader
-from protnote.data.collators import collate_variable_sequence_length
-from protnote.utils.data import read_fasta, get_vocab_mappings
-from protnote.utils.data import generate_vocabularies
+from proteinfertorch.collators import collate_variable_sequence_length
+from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies
 from itertools import product
 import numpy as np
 from torch.utils.data import RandomSampler
@@ -27,57 +26,43 @@ from torch.utils.data import Dataset
 
 class ProteinDataset(Dataset):
     """
-    Dataset class for protein sequences with GO annotations.
+    Dataset class for protein sequences with multilabel annotations.
     """
 
     def __init__(
         self,
+        data_path: str,
+        vocabulary_path: Optional[str] = None,
+        deduplicate:bool = False,
+        max_sequence_length:int = float("inf"),
         logger=None
         ):
         """
-        data_paths (dict): Dictionary containing paths to the data and vocabularies.
-            data_path (str): Path to the FASTA file containing the protein sequences and corresponding GO annotations
-            dataset_type (str): One of 'train', 'validation', or 'test'
-            go_descriptions_path (str): Path to the pickled file containing the GO term descriptions mapped to GO term IDs
-        deduplicate (bool): Whether to remove duplicate sequences (default: False)
+
         """
         self.logger = logger
+        self.data_path = data_path
+        self.vocabulary_path = vocabulary_path
+        self.deduplicate = deduplicate
+        self.max_sequence_length = max_sequence_length
+        
 
-        # Subset the data if subset_fraction is provided
-        subset_fraction = config["params"][
-            f"{self.dataset_type.upper()}_SUBSET_FRACTION"
-        ]
-        if subset_fraction < 1.0:
-            logging.info(
-                f"Subsetting {subset_fraction*100}% of the {self.dataset_type} set..."
-            )
-            self.data = self.data[: int(subset_fraction * len(self.data))]
-
-        extract_vocabularies_from = config["params"]["EXTRACT_VOCABULARIES_FROM"]
-        vocabulary_path = (
-            config["paths"][extract_vocabularies_from]
-            if extract_vocabularies_from is not None
+        self.vocabulary_path = (
+            self.vocabulary_path
+            if self.vocabulary_path is not None
             else self.data_path
         )
         self._preprocess_data(
-            deduplicate=config["params"]["DEDUPLICATE"],
-            max_sequence_length=config["params"]["MAX_SEQUENCE_LENGTH"],
             vocabulary_path=vocabulary_path,
         )
 
-    def _preprocess_data(self, deduplicate, max_sequence_length, vocabulary_path):
+    def _preprocess_data(self, vocabulary_path: str):
 
-        vocabularies = generate_vocabularies(data=self.data)
+        vocabularies = generate_vocabularies(data=vocabulary_path)
 
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
         self.sequence_id_vocabulary = vocabularies["sequence_id_vocab"]
-
-        # Save mask of represented vocab
-        self.represented_vocabulary_mask = [
-            label in self.label_frequency for label in self.label_vocabulary
-        ]
-
         self._process_vocab()
 
     # Helper functions for processing and loading vocabularies
@@ -143,51 +128,46 @@ class ProteinDataset(Dataset):
         return self.process_example(sequence, sequence_id, labels)
 
 def create_multiple_loaders(
-    datasets: list,
+    dataset_specs: list,
     num_workers: int = 2,
     pin_memory: bool = True,
     world_size: int = 1,
     rank: int = 0
 ) -> List[DataLoader]:
     loaders = defaultdict(list)
-    for dataset_specs in datasets.items():
-        batch_size_for_type = params[f"{dataset_type.upper()}_BATCH_SIZE"]
+    for datset_spec in dataset_specs.items():
+        batch_size_for_type = datset_spec["batch_size"]
+        drop_last = True
 
-        for dataset in dataset_list:
-            drop_last = True
+        dataset_specs = [
+                         {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
+                         {"dataset": ProteinDataset(),"type": "validation","name":"validation","shuffle": False,"drop_last": False,"batch_size": 32},
+                         {"dataset": ProteinDataset(),"type": "test","name":"test","shuffle": False,"drop_last": False,"batch_size": 32}
+                         ]
 
-            if dataset_type == "train":
-                sequence_sampler = observation_sampler_factory(
-                    dataset=dataset,
-                    world_size=world_size,
-                    rank=rank,
-                    shuffle=True,
-                )
-            else:
-                # Distributed Sampler without shuffling for validation or test
-                sequence_sampler = observation_sampler_factory(
-                    dataset=dataset,
-                    world_size=world_size,
-                    rank=rank,
-                    shuffle=False,
-                )
-                drop_last = False
+        sequence_sampler = observation_sampler_factory(
+            dataset=dataset_specs['dataset'],
+            world_size=world_size,
+            rank=rank,
+            shuffle=dataset_specs['shuffle'],
+            drop_last=dataset_specs['drop_last']
+        )
 
-            loader = DataLoader(
-                dataset,
-                batch_size=batch_size_for_type,
-                shuffle=False,
-                collate_fn=partial(
-                    collate_variable_sequence_length,
-                    world_size=world_size,
-                    rank=rank,
-                ),
-                num_workers=num_workers,
-                pin_memory=pin_memory,
-                drop_last=drop_last,
-                sampler=sequence_sampler
-            )
-            loaders[dataset_type].append(loader)
+        loader = DataLoader(
+            dataset_specs['dataset'],
+            batch_size=batch_size_for_type,
+            shuffle=False,
+            collate_fn=partial(
+                collate_variable_sequence_length,
+                world_size=world_size,
+                rank=rank,
+            ),
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=drop_last,
+            sampler=sequence_sampler
+        )
+        loaders[dataset_specs["name"]].append(loader)
 
     return loaders
 
