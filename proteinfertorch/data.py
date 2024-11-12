@@ -135,27 +135,18 @@ def create_multiple_loaders(
     rank: int = 0
 ) -> List[DataLoader]:
     loaders = defaultdict(list)
-    for datset_spec in dataset_specs.items():
-        batch_size_for_type = datset_spec["batch_size"]
-        drop_last = True
-
-        dataset_specs = [
-                         {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
-                         {"dataset": ProteinDataset(),"type": "validation","name":"validation","shuffle": False,"drop_last": False,"batch_size": 32},
-                         {"dataset": ProteinDataset(),"type": "test","name":"test","shuffle": False,"drop_last": False,"batch_size": 32}
-                         ]
+    for dataset_spec in dataset_specs.items():
 
         sequence_sampler = observation_sampler_factory(
-            dataset=dataset_specs['dataset'],
+            dataset=dataset_spec['dataset'],
             world_size=world_size,
             rank=rank,
-            shuffle=dataset_specs['shuffle'],
-            drop_last=dataset_specs['drop_last']
+            shuffle=dataset_spec['shuffle']
         )
 
         loader = DataLoader(
-            dataset_specs['dataset'],
-            batch_size=batch_size_for_type,
+            dataset_spec['dataset'],
+            batch_size=dataset_spec['batch_size'],
             shuffle=False,
             collate_fn=partial(
                 collate_variable_sequence_length,
@@ -164,10 +155,10 @@ def create_multiple_loaders(
             ),
             num_workers=num_workers,
             pin_memory=pin_memory,
-            drop_last=drop_last,
+            drop_last=dataset_spec['drop_last'],
             sampler=sequence_sampler
         )
-        loaders[dataset_specs["name"]].append(loader)
+        loaders[dataset_spec["name"]].append(loader)
 
     return loaders
 

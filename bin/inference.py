@@ -1,6 +1,7 @@
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.proteinfer import ProteInfer
-from proteinfertorch.utils import read_json, generate_vocabularies
+from proteinfertorch.utils import read_json, read_yaml, generate_vocabularies, to_device
+from proteinfertorch.config import get_logger, ACTIVATION_MAP
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -16,6 +17,15 @@ logger = get_logger()
 # Argument parser setup
 parser = argparse.ArgumentParser(description="Train and/or Test the ProteInfer model.")
 
+parser.add_argument('--config-dir',
+                    type=str,
+                    default="config",
+                    help="Path to the configuration directory (default: config)")
+initial_args, _ = parser.parse_known_args()
+
+config = read_yaml(
+    os.path.join(initial_args.config_dir, "config.yaml")
+)
 
 parser.add_argument(
     "--data-path",
@@ -32,6 +42,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--weights-path",
+    type=str,
+    required=True,
+    help="Path to the weights file"
+)
+parser.add_argument(
     "--name",
     type=str,
     default="ProteInfer",
@@ -40,13 +56,7 @@ parser.add_argument(
 parser.add_argument(
     "--threshold",
     type=float,
-    default=0.5
-)
-parser.add_argument(
-    "--weights-path",
-    type=str,
-    default="GO",
-    help="Which model weights to use: GO or EC",
+    default=config["inference"]["threshold"]
 )
 
 parser.add_argument(
@@ -59,7 +69,7 @@ parser.add_argument(
 parser.add_argument(
     "--max-sequence-length",
     type=int,
-    default=float("inf"),
+    default=config["data"]["max_sequence_length"],
     help="Maximum sequence length to consider",
 )
 
@@ -70,12 +80,21 @@ parser.add_argument(
     help="Save predictions and ground truth dataframe for validation and/or test",
 )
 
-args = parser.parse_args()
+parser.add_argument(
+    "--unpin-memory",
+    action="store_true",
+    default=False,
+    help="Whether to unpin memory for dataloaders",
+)
 
-def to_device(device, *args):
-    return [
-        item.to(device) if isinstance(item, torch.Tensor) else None for item in args
-    ]
+parser.add_argument(
+    "--num-workers",
+    type=int,
+    default=config["training"]["num_workers"],
+    help="Number of workers for dataloaders",
+)
+
+args = parser.parse_args()
 
 test_dataset = ProteinDataset(
         data_path = args.data_path,
@@ -85,69 +104,45 @@ test_dataset = ProteinDataset(
         logger=None
         )
 
-# Add datasets to a dictionary
-# TODO: This does not support multiple datasets. But I think we should remove that support anyway. Too complicated.
-datasets = {
-    "train": [train_dataset],
-    "validation": [validation_dataset],
-    "test": [test_dataset],
-}
-
-# Remove empty datasets. May happen in cases like only validating a model.
-datasets = {k: v for k, v in datasets.items() if v[0] is not None}
-
-# Define label sample sizes for train, validation, and test loaders
-label_sample_sizes = {
-    "train": params["TRAIN_LABEL_SAMPLE_SIZE"],
-    "validation": params["VALIDATION_LABEL_SAMPLE_SIZE"],
-    "test": None,  # No sampling for the test set
-}
-
-# Initialize new run
-logger.info(f"################## {timestamp} RUNNING train.py ##################")
-
+dataset_specs = [
+                    {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["test_batch_size"]}
+                    ]
+# dataset_specs = [
+#                     {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
+#                     {"dataset": ProteinDataset(),"type": "validation","name":"validation","shuffle": False,"drop_last": False,"batch_size": 32},
+#                     {"dataset": ProteinDataset(),"type": "test","name":"test","shuffle": False,"drop_last": False,"batch_size": 32}
+#                     ]
 
 # Define data loaders
 loaders = create_multiple_loaders(
-    datasets=datasets, params=params, num_workers=params["NUM_WORKERS"], pin_memory=True
+    dataset_specs = dataset_specs,
+    num_workers = args.num_workers,
+    pin_memory = not args.unpin_memory,
+    world_size = world_size,
+    rank = rank
 )
 
-model_weights = paths[f"PROTEINFER_{args.proteinfer_weights}_WEIGHTS_PATH"]
-if args.model_weights_id is not None:
-    model_weights = re.sub(r'(\d+)\.pkl$', str(args.model_weights_id) + '.pkl', model_weights)
-    
+#Extract the first two characters of the model weights path as the architecture type: go or ec
+architecture_type = args.weights_path.split("/")[-1][:2]
+architecture = read_yaml(config['architecture_config'][architecture_type])
 
 model = ProteInfer.from_pretrained(
-    weights_path=model_weights,
-    num_labels=config["embed_sequences_params"][
-        f"PROTEINFER_NUM_{args.proteinfer_weights}_LABELS"
-    ],
-    input_channels=config["embed_sequences_params"]["INPUT_CHANNELS"],
-    output_channels=config["embed_sequences_params"]["OUTPUT_CHANNELS"],
-    kernel_size=config["embed_sequences_params"]["KERNEL_SIZE"],
-    activation=torch.nn.ReLU,
-    dilation_base=config["embed_sequences_params"]["DILATION_BASE"],
-    num_resnet_blocks=config["embed_sequences_params"]["NUM_RESNET_BLOCKS"],
-    bottleneck_factor=config["embed_sequences_params"]["BOTTLENECK_FACTOR"],
+    weights_path=args.weights_path,
+    num_labels=architecture["output_dim"],
+    input_channels=architecture["input_dim"],
+    output_channels=architecture["output_embedding_dim"],
+    kernel_size=architecture["kernel_size"],
+    activation=ACTIVATION_MAP[architecture["activation"]],
+    dilation_base=architecture["dilation_base"],
+    num_resnet_blocks=architecture["num_resnet_blocks"],
+    bottleneck_factor=architecture["bottleneck_factor"],
 )
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 model = model.eval()
 
-label_normalizer = read_json(paths["PARENTHOOD_LIB_PATH"])
+# label_normalizer = read_json(paths["PARENTHOOD_LIB_PATH"])
 
-
-# Initialize EvalMetrics
-eval_metrics = EvalMetrics(device=device)
-label_sample_sizes = {
-    k: (v if v is not None else len(datasets[k][0].label_vocabulary))
-    for k, v in label_sample_sizes.items()
-    if k in datasets.keys()
-}
-
-full_data_path = (
-    "FULL_DATA_PATH" if args.proteinfer_weights == "GO" else "FULL_EC_DATA_PATH"
-)
 PROTEINFER_VOCABULARY = generate_vocabularies(
     file_path=config["paths"][full_data_path]
 )["label_vocab"]

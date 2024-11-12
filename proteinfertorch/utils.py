@@ -5,8 +5,15 @@ import pickle
 from Bio import SeqIO
 from Bio.Seq import Seq
 import json
+import yaml
 from Bio.SeqRecord import SeqRecord
 
+
+
+def read_yaml(data_path: str):
+    with open(data_path, "r") as file:
+        data = yaml.safe_load(file)
+    return data
 
 
 def read_json(data_path: str):
@@ -206,3 +213,11 @@ def normalize_confidences(predictions, label_vocab, applicable_label_dict):
             label_confidences.append(predictions[:, vocab_indices[label]])
 
     return np.stack(label_confidences, axis=1)
+
+
+
+def to_device(device, *args):
+    return [
+        item.to(device) if isinstance(item, torch.Tensor) else None for item in args
+    ]
+

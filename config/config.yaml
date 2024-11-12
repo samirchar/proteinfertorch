@@ -1,0 +1,39 @@
+architecture_configs:
+  ec: config_ec.yaml
+  go: config_go.yaml
+
+training:
+  train_batch_size: 32
+  test_batch_size: 32
+  threshold: 0.5
+  num_workers: 2
+  pin_memory: true
+  epochs: 50
+
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+inference:
+  batch_size: 32
+  threshold: 0.5
+  num_workers: 2
+  pin_memory: true
+  
+
+data:
+  deduplicate: false
+  max_sequence_length: .inf
+
+
+
+logging:
+  log_interval: 10
+  save_model: true
+  checkpoint_dir: "checkpoints/"
+  tensorboard: true
+  tensorboard_dir: "logs/"
+
+device:
+  use_gpu: true
+  gpu_ids: [0, 1]
+  distributed: false

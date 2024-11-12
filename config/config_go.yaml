@@ -1,0 +1,8 @@
+architecture:
+  input_dim: 20
+  output_embedding_dim: 1100
+  output_dim: 32102 # equal to the number of unique labels
+  kernel_size: 9
+  dilation_base: 3
+  num_resnet_blocks: 5
+  bottleneck_factor: 0.5
