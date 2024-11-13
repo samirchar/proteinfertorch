@@ -9,6 +9,7 @@ training:
   num_workers: 2
   pin_memory: true
   epochs: 50
+  map_bins: null
 
   learning_rate: 0.001
   weight_decay: 0.0001
@@ -18,12 +19,12 @@ inference:
   threshold: 0.5
   num_workers: 2
   pin_memory: true
+  map_bins: null
   
 
 data:
   deduplicate: false
   max_sequence_length: .inf
-
 
 
 logging:
@@ -37,3 +38,7 @@ device:
   use_gpu: true
   gpu_ids: [0, 1]
   distributed: false
+
+default_dirs: #Default directories. Can be modified by script args.
+  data: "data/"
+  outputs: "outputs/"

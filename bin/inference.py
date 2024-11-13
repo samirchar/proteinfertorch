@@ -2,6 +2,7 @@ from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.utils import read_json, read_yaml, generate_vocabularies, to_device
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
+from proteinfertorch.utils import save_evaluation_results
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -9,8 +10,10 @@ import argparse
 import os
 import re
 from collections import defaultdict
-from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC
+from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC, BinaryF1Score, MultilabelBinnedAUPRC, BinaryBinnedAUPRC, Mean
+from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
 from torch.cuda.amp import autocast
+
 
 logger = get_logger()
 
@@ -31,7 +34,7 @@ parser.add_argument(
     "--data-path",
     type=str,
     required=True,
-    help="Path to the data file"
+    help="Path to the data fasta file."
 )
 
 parser.add_argument(
@@ -47,10 +50,18 @@ parser.add_argument(
     required=True,
     help="Path to the weights file"
 )
+
+parser.add_argument(
+    "--output-dir",
+    type=str,
+    default=config["default_dirs"]["outputs"],
+    help="Path to the output directory"
+)
+
 parser.add_argument(
     "--name",
     type=str,
-    default="ProteInfer",
+    default="ProteInfer", #TODO: add uuid
     help="Name of the W&B run. If not provided, a name will be generated.",
 )
 parser.add_argument(
@@ -74,13 +85,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--save-prediction-results",
-    action="store_true",
-    default=False,
-    help="Save predictions and ground truth dataframe for validation and/or test",
-)
-
-parser.add_argument(
     "--unpin-memory",
     action="store_true",
     default=False,
@@ -92,6 +96,19 @@ parser.add_argument(
     type=int,
     default=config["training"]["num_workers"],
     help="Number of workers for dataloaders",
+)
+
+parser.add_argument(
+    "--map-bins",
+    type=int,
+    default=config["inference"]["map_bins"],
+    help="Number of bins for MAP calculation",
+)
+parser.add_argument(
+    "--save-prediction-results",
+    action="store_true",
+    default=False,
+    help="Save predictions and ground truth dataframe for validation and/or test",
 )
 
 args = parser.parse_args()
@@ -118,8 +135,8 @@ loaders = create_multiple_loaders(
     dataset_specs = dataset_specs,
     num_workers = args.num_workers,
     pin_memory = not args.unpin_memory,
-    world_size = world_size,
-    rank = rank
+    world_size = 1,
+    rank = 0
 )
 
 #Extract the first two characters of the model weights path as the architecture type: go or ec
@@ -143,36 +160,18 @@ model = model.eval()
 
 # label_normalizer = read_json(paths["PARENTHOOD_LIB_PATH"])
 
-PROTEINFER_VOCABULARY = generate_vocabularies(
-    file_path=config["paths"][full_data_path]
-)["label_vocab"]
 
 for loader_name, loader in loaders.items():
-    print(loader_name, len(loader[0].dataset.label_vocabulary))
-
-    represented_labels = [
-        label in loader[0].dataset.label_vocabulary for label in PROTEINFER_VOCABULARY
-    ]
-
-    test_metrics = eval_metrics.get_metric_collection_with_regex(
-        pattern="f1_m.*",
-        threshold=args.threshold,
-        num_labels=label_sample_sizes["test"]
-        if (params["IN_BATCH_SAMPLING"] or params["GRID_SAMPLER"]) is False
-        else None,
-    )
-
-    bce_loss = torch.nn.BCEWithLogitsLoss(reduction="mean")
-    focal_loss = FocalLoss(
-        gamma=config["params"]["FOCAL_LOSS_GAMMA"],
-        alpha=config["params"]["FOCAL_LOSS_ALPHA"],
-    )
-    total_bce_loss = 0
-    total_focal_loss = 0
+    logger.info(f"##{loader_name}##")
     test_results = defaultdict(list)
+    bce_loss = torch.nn.BCEWithLogitsLoss(reduction="mean")
 
-    mAP_micro = BinaryAUPRC(device="cpu")
-    mAP_macro = MultilabelAUPRC(device="cpu", num_labels=label_sample_sizes["test"])
+    metrics = {
+        "map_micro": BinaryAUPRC(device="cpu") if args.map_bins is None else BinaryBinnedAUPRC(device="cpu", threshold=args.map_bins),
+        "map_macro": MultilabelAUPRC(device="cpu", num_labels=model.num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=model.num_labels, threshold=args.map_bins),
+        "f1_micro": BinaryF1Score(device=device, average="micro", threshold=args.threshold),
+        "avg_loss":  Mean(device=device)
+    }
 
     with torch.no_grad(), autocast(enabled=True):
         for batch_idx, batch in tqdm(enumerate(loader[0]), total=len(loader[0])):
@@ -181,56 +180,37 @@ for loader_name, loader in loaders.items():
                 sequence_onehots,
                 sequence_lengths,
                 sequence_ids,
-                label_multihots,
-                label_embeddings,
+                label_multihots
             ) = (
                 batch["sequence_onehots"],
                 batch["sequence_lengths"],
                 batch["sequence_ids"],
-                batch["label_multihots"],
-                batch["label_embeddings"],
+                batch["label_multihots"]
             )
+            
             sequence_onehots, sequence_lengths, label_multihots = to_device(
                 device, sequence_onehots, sequence_lengths, label_multihots
             )
 
             logits = model(sequence_onehots, sequence_lengths)
-            if args.only_represented_labels:
-                logits = logits[:, represented_labels]
 
             probabilities = torch.sigmoid(logits)
 
-            if not args.only_inference:
-                test_metrics(probabilities, label_multihots)
-
-                if loader_name in ["validation", "test"]:
-                    mAP_micro.update(
-                        probabilities.cpu().flatten(), label_multihots.cpu().flatten()
-                    )
-                    mAP_macro.update(probabilities.cpu(), label_multihots.cpu())
-
-                total_bce_loss += bce_loss(logits, label_multihots.float())
-                total_focal_loss += focal_loss(logits, label_multihots.float())
+            metrics["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
+            metrics["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
+            metrics["f1_micro"].update(probabilities, label_multihots)
+            metrics["avg_loss"].update(bce_loss(logits, label_multihots.float()))
 
             if args.save_prediction_results:
                 test_results["sequence_ids"].append(sequence_ids)
                 test_results["logits"].append(logits.cpu())
                 test_results["labels"].append(label_multihots.cpu())
 
-        if not args.only_inference:
-            test_metrics = test_metrics.compute()
-            test_metrics.update({"bce_loss": total_bce_loss / len(loader[0])})
-            test_metrics.update({"focal_loss": total_focal_loss / len(loader[0])})
-
-            if loader_name in ["validation", "test"]:
-                test_metrics.update(
-                    {"map_micro": mAP_micro.compute(), "map_macro": mAP_macro.compute()}
-                )
-
-        print("\n\n", "=" * 20)
-        print(f"##{loader_name}##")
-        print(test_metrics)
-        print("=" * 20, "\n\n")
+        final_metrics = sync_and_compute_collection(metrics)
+        #Convert items in final_metrics to scalars if they are tensors and log metrics
+        final_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in final_metrics.items()}
+        logger.info(final_metrics)
+        
 
         if args.save_prediction_results:
             for key in test_results.keys():
@@ -240,16 +220,15 @@ for loader_name, loader in loaders.items():
                     )
                 else:
                     test_results[key] = torch.cat(test_results[key]).numpy()
-            print("saving resuts...")
+            logger.info("saving predictions...")
             save_evaluation_results(
                 results=test_results,
                 label_vocabulary=loader[0].dataset.label_vocabulary,
-                run_name=f"{task}_{args.name}" + (str(args.model_weights_id)
-                if args.model_weights_id is not None
-                else ""),
-                output_dir=config["paths"]["RESULTS_DIR"],
+                run_name=args.name,
+                output_dir=args.output_dir,
                 data_split_name=loader_name,
-                save_as_h5=True,
+                logger=logger,
             )
-            print("Done saving resuts...")
+            logger.info("Done saving predictions...")
+
 torch.cuda.empty_cache()

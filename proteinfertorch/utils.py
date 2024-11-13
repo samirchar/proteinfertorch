@@ -6,6 +6,9 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 import json
 import yaml
+import os
+import pandas as pd
+from proteinfertorch.config import get_logger
 from Bio.SeqRecord import SeqRecord
 
 
@@ -221,3 +224,41 @@ def to_device(device, *args):
         item.to(device) if isinstance(item, torch.Tensor) else None for item in args
     ]
 
+def save_evaluation_results(
+    results,
+    label_vocabulary,
+    run_name,
+    output_dir,
+    data_split_name,
+    logger = None
+):
+    
+    logger = logger if logger is not None else get_logger()
+
+    # Do not need to check if is_master, since this function is only called by the master node
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    logits_df_cols = label_vocabulary
+    labels_df = pd.DataFrame(
+        results["labels"], columns=label_vocabulary, index=results["sequence_ids"]
+    )
+    labels_df_output_path = os.path.join(
+        output_dir, f"{data_split_name}_labels_{run_name}.parquet"
+    )
+
+    labels_df_output_path = labels_df_output_path.replace(".parquet", ".h5")
+    logger.info(f"saving results to {labels_df_output_path}")
+    labels_df.to_hdf(labels_df_output_path, key="labels_df", mode="w")
+
+    logits_df = pd.DataFrame(
+        results["logits"], columns=logits_df_cols, index=results["sequence_ids"]
+    )
+
+    logits_df_output_path = os.path.join(
+        output_dir, f"{data_split_name}_logits_{run_name}.parquet"
+    )
+
+    logits_df_output_path = logits_df_output_path.replace(".parquet", ".h5")
+    logger.info(f"saving results to {logits_df_output_path}")
+    logits_df.to_hdf(logits_df_output_path, key="logits_df", mode="w")
