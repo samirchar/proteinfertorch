@@ -1,5 +1,5 @@
-from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.proteinfer import ProteInfer
+from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_json, read_yaml, generate_vocabularies, to_device
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
 from proteinfertorch.utils import save_evaluation_results
@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC, BinaryF1Score, MultilabelBinnedAUPRC, BinaryBinnedAUPRC, Mean
 from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
-from torch.cuda.amp import autocast
+
 
 
 logger = get_logger()
@@ -122,7 +122,7 @@ test_dataset = ProteinDataset(
         )
 
 dataset_specs = [
-                    {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["test_batch_size"]}
+                    {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["batch_size"]}
                     ]
 # dataset_specs = [
 #                     {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
@@ -141,18 +141,21 @@ loaders = create_multiple_loaders(
 
 #Extract the first two characters of the model weights path as the architecture type: go or ec
 architecture_type = args.weights_path.split("/")[-1][:2]
-architecture = read_yaml(config['architecture_config'][architecture_type])
+architecture_config = read_yaml(
+    os.path.join(initial_args.config_dir, config['architecture_configs'][architecture_type])
+)
 
+num_labels = architecture_config["architecture"]["output_dim"]
 model = ProteInfer.from_pretrained(
     weights_path=args.weights_path,
-    num_labels=architecture["output_dim"],
-    input_channels=architecture["input_dim"],
-    output_channels=architecture["output_embedding_dim"],
-    kernel_size=architecture["kernel_size"],
-    activation=ACTIVATION_MAP[architecture["activation"]],
-    dilation_base=architecture["dilation_base"],
-    num_resnet_blocks=architecture["num_resnet_blocks"],
-    bottleneck_factor=architecture["bottleneck_factor"],
+    num_labels=num_labels,
+    input_channels=architecture_config["architecture"]["input_dim"],
+    output_channels=architecture_config["architecture"]["output_embedding_dim"],
+    kernel_size=architecture_config["architecture"]["kernel_size"],
+    activation=ACTIVATION_MAP[architecture_config["architecture"]["activation"]],
+    dilation_base=architecture_config["architecture"]["dilation_base"],
+    num_resnet_blocks=architecture_config["architecture"]["num_resnet_blocks"],
+    bottleneck_factor=architecture_config["architecture"]["bottleneck_factor"],
 )
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
@@ -168,12 +171,12 @@ for loader_name, loader in loaders.items():
 
     metrics = {
         "map_micro": BinaryAUPRC(device="cpu") if args.map_bins is None else BinaryBinnedAUPRC(device="cpu", threshold=args.map_bins),
-        "map_macro": MultilabelAUPRC(device="cpu", num_labels=model.num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=model.num_labels, threshold=args.map_bins),
-        "f1_micro": BinaryF1Score(device=device, average="micro", threshold=args.threshold),
+        "map_macro": MultilabelAUPRC(device="cpu", num_labels=num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=num_labels, threshold=args.map_bins),
+        "f1_micro": BinaryF1Score(device=device, threshold=args.threshold),
         "avg_loss":  Mean(device=device)
     }
 
-    with torch.no_grad(), autocast(enabled=True):
+    with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type):
         for batch_idx, batch in tqdm(enumerate(loader[0]), total=len(loader[0])):
             # Unpack the validation or testing batch
             (
@@ -198,7 +201,7 @@ for loader_name, loader in loaders.items():
 
             metrics["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
             metrics["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
-            metrics["f1_micro"].update(probabilities, label_multihots)
+            metrics["f1_micro"].update(probabilities.flatten(), label_multihots.flatten())
             metrics["avg_loss"].update(bce_loss(logits, label_multihots.float()))
 
             if args.save_prediction_results:

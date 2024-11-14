@@ -2,13 +2,11 @@ import torch
 import logging
 import random
 from collections import defaultdict
-from joblib import Parallel, delayed, cpu_count
 from functools import partial
 from collections import Counter
 from typing import List
 import pandas as pd
 import numpy as np
-import blosum as bl
 from torch.utils.data import Dataset, DataLoader
 from proteinfertorch.collators import collate_variable_sequence_length
 from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies
@@ -46,6 +44,7 @@ class ProteinDataset(Dataset):
         self.deduplicate = deduplicate
         self.max_sequence_length = max_sequence_length
         
+        self.data = read_fasta(data_path)
 
         self.vocabulary_path = (
             self.vocabulary_path
@@ -58,7 +57,7 @@ class ProteinDataset(Dataset):
 
     def _preprocess_data(self, vocabulary_path: str):
 
-        vocabularies = generate_vocabularies(data=vocabulary_path)
+        vocabularies = generate_vocabularies(file_path=vocabulary_path)
 
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
@@ -135,7 +134,7 @@ def create_multiple_loaders(
     rank: int = 0
 ) -> List[DataLoader]:
     loaders = defaultdict(list)
-    for dataset_spec in dataset_specs.items():
+    for dataset_spec in dataset_specs:
 
         sequence_sampler = observation_sampler_factory(
             dataset=dataset_spec['dataset'],
@@ -149,9 +148,7 @@ def create_multiple_loaders(
             batch_size=dataset_spec['batch_size'],
             shuffle=False,
             collate_fn=partial(
-                collate_variable_sequence_length,
-                world_size=world_size,
-                rank=rank,
+                collate_variable_sequence_length
             ),
             num_workers=num_workers,
             pin_memory=pin_memory,
@@ -170,7 +167,7 @@ def observation_sampler_factory(
     rank: int = 0
     ):
     if world_size == 1:
-        sampler = RandomSampler()
+        sampler = RandomSampler(dataset)
     else:
         assert dataset is not None, "DistributeSampler requires dataset"
         sampler = DistributedSampler(

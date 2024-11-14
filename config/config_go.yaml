@@ -6,3 +6,4 @@ architecture:
   dilation_base: 3
   num_resnet_blocks: 5
   bottleneck_factor: 0.5
+  activation: "relu"

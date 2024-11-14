@@ -10,6 +10,13 @@ channels:
   - defaults
 dependencies:
   - python=3.12.4
+  - pytorch=2.5.1
   - pip=24.2
+  - pandas=1.5.2
+  - wandb=0.18.7
+  - tqdm=4.66.5
+  - pip:
+    - torcheval==0.0.7
+    - ipykernel==6.29.5
 
 prefix: /anaconda/envs/proteinfertorch
