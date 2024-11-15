@@ -186,6 +186,7 @@ def reverse_map(applicable_label_dict, label_vocab=None):
     return collections.defaultdict(frozenset, children.items())
 
 
+#TODO: this function could be reimplemented in pytorch
 def normalize_confidences(predictions, label_vocab, applicable_label_dict):
     """Set confidences of parent labels to the max of their children.
 
@@ -216,6 +217,25 @@ def normalize_confidences(predictions, label_vocab, applicable_label_dict):
             label_confidences.append(predictions[:, vocab_indices[label]])
 
     return np.stack(label_confidences, axis=1)
+
+class probability_normalizer:
+    def __init__(self, applicable_label_dict, label_vocab):
+        self.label_vocab = label_vocab
+        self.vocab_indices = {v: i for i, v in enumerate(label_vocab)}
+        self.children = reverse_map(applicable_label_dict, set(self.vocab_indices.keys()))
+
+    def __call__(self, predictions):
+        # Only vectorize this along the sequences dimension as the number of children
+        # varies between labels.
+        label_confidences = []
+        for label in self.label_vocab:
+            child_indices = np.array([self.vocab_indices[child] for child in self.children[label]])
+            if child_indices.size > 1:
+                confidences = np.max(predictions[:, child_indices], axis=1)
+                label_confidences.append(confidences)
+            else:
+                label_confidences.append(predictions[:, self.vocab_indices[label]])
+        return np.stack(label_confidences, axis=1)
 
 
 

@@ -2,7 +2,7 @@ from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_json, read_yaml, generate_vocabularies, to_device
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
-from proteinfertorch.utils import save_evaluation_results
+from proteinfertorch.utils import save_evaluation_results, probability_normalizer
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -17,18 +17,33 @@ from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
 
 logger = get_logger()
 
-# Argument parser setup
-parser = argparse.ArgumentParser(description="Train and/or Test the ProteInfer model.")
+# Arguments that must be parsed first
+parser_first = argparse.ArgumentParser(add_help=False)
 
-parser.add_argument('--config-dir',
+parser_first.add_argument('--config-dir',
                     type=str,
                     default="config",
                     help="Path to the configuration directory (default: config)")
-initial_args, _ = parser.parse_known_args()
+
+
+parser_first.add_argument(
+    "--weights-path",
+    type=str,
+    required=True,
+    help="Path to the weights file"
+)
+
+initial_args, _ = parser_first.parse_known_args()
 
 config = read_yaml(
     os.path.join(initial_args.config_dir, "config.yaml")
 )
+
+task = initial_args.weights_path.split("/")[-1][:2]
+task_defaults = config[f'{task}_defaults']
+
+# Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
+parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
 
 parser.add_argument(
     "--data-path",
@@ -45,16 +60,9 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--weights-path",
-    type=str,
-    required=True,
-    help="Path to the weights file"
-)
-
-parser.add_argument(
     "--output-dir",
     type=str,
-    default=config["default_dirs"]["outputs"],
+    default=config["paths"]["outputs"],
     help="Path to the output directory"
 )
 
@@ -67,7 +75,7 @@ parser.add_argument(
 parser.add_argument(
     "--threshold",
     type=float,
-    default=config["inference"]["threshold"]
+    default=task_defaults["threshold"],
 )
 
 parser.add_argument(
@@ -111,7 +119,21 @@ parser.add_argument(
     help="Save predictions and ground truth dataframe for validation and/or test",
 )
 
+parser.add_argument(
+    "--parenthood-path",
+    type=str,
+    default=config["paths"]["parenthood_2019"],
+    help="""Path to the parenthood file. 
+            Must align with annotations release used in data path.
+            Can be None to skip normalization""",
+)
+
+
+# load args
 args = parser.parse_args()
+
+
+
 
 test_dataset = ProteinDataset(
         data_path = args.data_path,
@@ -139,30 +161,25 @@ loaders = create_multiple_loaders(
     rank = 0
 )
 
-#Extract the first two characters of the model weights path as the architecture type: go or ec
-architecture_type = args.weights_path.split("/")[-1][:2]
-architecture_config = read_yaml(
-    os.path.join(initial_args.config_dir, config['architecture_configs'][architecture_type])
-)
 
-num_labels = architecture_config["architecture"]["output_dim"]
+
+num_labels = task_defaults["output_dim"]
 model = ProteInfer.from_pretrained(
     weights_path=args.weights_path,
     num_labels=num_labels,
-    input_channels=architecture_config["architecture"]["input_dim"],
-    output_channels=architecture_config["architecture"]["output_embedding_dim"],
-    kernel_size=architecture_config["architecture"]["kernel_size"],
-    activation=ACTIVATION_MAP[architecture_config["architecture"]["activation"]],
-    dilation_base=architecture_config["architecture"]["dilation_base"],
-    num_resnet_blocks=architecture_config["architecture"]["num_resnet_blocks"],
-    bottleneck_factor=architecture_config["architecture"]["bottleneck_factor"],
+    input_channels=task_defaults["input_dim"],
+    output_channels=task_defaults["output_embedding_dim"],
+    kernel_size=task_defaults["kernel_size"],
+    activation=ACTIVATION_MAP[task_defaults["activation"]],
+    dilation_base=task_defaults["dilation_base"],
+    num_resnet_blocks=task_defaults["num_resnet_blocks"],
+    bottleneck_factor=task_defaults["bottleneck_factor"],
 )
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 model = model.eval()
 
-# label_normalizer = read_json(paths["PARENTHOOD_LIB_PATH"])
-
+label_normalizer = read_json(args.parenthood_path) if args.parenthood_path is not None else None
 
 for loader_name, loader in loaders.items():
     logger.info(f"##{loader_name}##")
@@ -176,7 +193,12 @@ for loader_name, loader in loaders.items():
         "avg_loss":  Mean(device=device)
     }
 
-    with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type):
+    prob_norm = probability_normalizer(
+                        label_vocab=loader[0].dataset.label_vocabulary,
+                        applicable_label_dict = label_normalizer,
+                        )
+    
+    with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
         for batch_idx, batch in tqdm(enumerate(loader[0]), total=len(loader[0])):
             # Unpack the validation or testing batch
             (
@@ -198,6 +220,12 @@ for loader_name, loader in loaders.items():
             logits = model(sequence_onehots, sequence_lengths)
 
             probabilities = torch.sigmoid(logits)
+
+            if args.parenthood_path is not None:
+                probabilities =  torch.tensor(
+                    prob_norm(probabilities.cpu().numpy()),
+                    device=device,
+                )
 
             metrics["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
             metrics["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
