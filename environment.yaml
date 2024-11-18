@@ -16,6 +16,7 @@ dependencies:
   - wandb=0.18.7
   - tqdm=4.66.5
   - pytables=3.10.1
+  - huggingface_hub=0.26.2
   - pip:
     - torcheval==0.0.7
     - ipykernel==6.29.5

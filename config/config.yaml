@@ -30,10 +30,6 @@ logging:
   tensorboard: true
   tensorboard_dir: "logs/"
 
-device:
-  use_gpu: true
-  gpu_ids: [0, 1]
-  distributed: false
 
 paths: #Default paths. Can be modified by script args.
   data: "data/"
@@ -50,7 +46,7 @@ go_defaults:
   num_resnet_blocks: 5
   bottleneck_factor: 0.5
   activation: "relu"
-  threshold: 0.710102
+  threshold: 0.88134765625 #0.710102
   
 ec_defaults:
   input_dim: 20

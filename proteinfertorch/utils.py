@@ -11,6 +11,31 @@ import pandas as pd
 from proteinfertorch.config import get_logger
 from Bio.SeqRecord import SeqRecord
 
+EC_RANDOM_ENSEMBLE_ELEMENT_EXPERIMENT_IDS = [
+    '13703966', '13704083', '13704104', '13704130', '13705280', '13705675',
+    '13705786', '13705802', '13705819', '13705839', '13706239', '13706986',
+    '13707020', '13707589', '13707925', '13708369', '13708672', '13708706',
+    '13708740', '13708951', '13709242', '13709584', '13709983', '13710037',
+    '13711670', '13729344', '13730041', '13730097', '13730679', '13730876',
+    '13730909', '13731218', '13731588', '13731728', '13731976',
+]
+
+GO_RANDOM_ENSEMBLE_ELEMENT_EXPERIMENT_IDS = [
+    '13703706', '13703742', '13703997', '13704131', '13705631', '13705668',
+    '13705677', '13705689', '13705708', '13705728', '13706170', '13706215',
+    '13707414', '13707438', '13707732', '13708169', '13708676', '13708925',
+    '13708995', '13709052', '13709428', '13709589', '13710370', '13710418',
+    '13711677', '13729352', '13730011', '13730387', '13730746', '13730766',
+    '13730958', '13731179', '13731598', '13731645', '13732022',
+]
+
+EC_CLUSTERED_ENSEMBLE_ELEMENT_EXPERIMENT_IDS = [
+    
+]
+
+GO_CLUSTERED_ENSEMBLE_ELEMENT_EXPERIMENT_IDS = [
+
+]
 
 
 def read_yaml(data_path: str):
@@ -260,25 +285,35 @@ def save_evaluation_results(
         os.makedirs(output_dir)
 
     logits_df_cols = label_vocabulary
+
+
+    #Saving the labels_df
     labels_df = pd.DataFrame(
         results["labels"], columns=label_vocabulary, index=results["sequence_ids"]
     )
     labels_df_output_path = os.path.join(
-        output_dir, f"{data_split_name}_labels_{run_name}.parquet"
+        output_dir, f"{data_split_name}_labels_{run_name}.h5"
     )
-
-    labels_df_output_path = labels_df_output_path.replace(".parquet", ".h5")
     logger.info(f"saving results to {labels_df_output_path}")
     labels_df.to_hdf(labels_df_output_path, key="labels_df", mode="w")
 
+    #saving the logits df
     logits_df = pd.DataFrame(
         results["logits"], columns=logits_df_cols, index=results["sequence_ids"]
     )
-
     logits_df_output_path = os.path.join(
-        output_dir, f"{data_split_name}_logits_{run_name}.parquet"
+        output_dir, f"{data_split_name}_logits_{run_name}.h5"
     )
-
-    logits_df_output_path = logits_df_output_path.replace(".parquet", ".h5")
     logger.info(f"saving results to {logits_df_output_path}")
     logits_df.to_hdf(logits_df_output_path, key="logits_df", mode="w")
+
+
+    #Saving the probabilities df
+    probabilities_df = pd.DataFrame(
+        results["probabilities"], columns=logits_df_cols, index=results["sequence_ids"]
+    )
+    probabilities_df_output_path = os.path.join(
+        output_dir, f"{data_split_name}_probabilities_{run_name}.h5"
+    )
+    logger.info(f"saving results to {probabilities_df_output_path}")
+    probabilities_df.to_hdf(probabilities_df_output_path, key="probabilities_df", mode="w")

@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from huggingface_hub import PyTorchModelHubMixin
 from proteinfertorch.utils import transfer_tf_weights_to_torch
 
 
@@ -102,7 +103,9 @@ class Residual(torch.nn.Module):
         return out
 
 
-class ProteInfer(torch.nn.Module):
+class ProteInfer(
+    torch.nn.Module,
+    PyTorchModelHubMixin):
     def __init__(
         self,
         num_labels: int = 32102,
@@ -158,7 +161,7 @@ class ProteInfer(torch.nn.Module):
         return logits
 
     @classmethod
-    def from_pretrained(
+    def from_tf_pretrained(
         cls,
         weights_path: str,
         num_labels: int,

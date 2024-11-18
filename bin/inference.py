@@ -164,7 +164,7 @@ loaders = create_multiple_loaders(
 
 
 num_labels = task_defaults["output_dim"]
-model = ProteInfer.from_pretrained(
+model = ProteInfer.from_tf_pretrained(
     weights_path=args.weights_path,
     num_labels=num_labels,
     input_channels=task_defaults["input_dim"],
@@ -236,6 +236,7 @@ for loader_name, loader in loaders.items():
                 test_results["sequence_ids"].append(sequence_ids)
                 test_results["logits"].append(logits.cpu())
                 test_results["labels"].append(label_multihots.cpu())
+                test_results["probabilities"].append(probabilities.cpu())
 
         final_metrics = sync_and_compute_collection(metrics)
         #Convert items in final_metrics to scalars if they are tensors and log metrics
