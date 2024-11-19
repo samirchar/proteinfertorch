@@ -12,9 +12,11 @@ def run_command(command):
 def download_and_extract_model(task:str,data_split:str,id:int,output_dir:str):
     """Download, extract, and export the model if it doesn't exist"""
     output_dir = Path(output_dir)
-    model_file = output_dir / f"{task}_{data_split}_model_weights{id}.pkl"
+    model_file_name = f"{task}_{data_split}_{id}"
+    model_file = output_dir / Path(str(model_file_name)+".pkl")
     if not os.path.exists(model_file):
-        tar_file = f"noxpd2_cnn_swissprot_go_random_swiss-cnn_for_swissprot_{task}_{data_split}-{id}.tar.gz"
+        noxtype = "noxpnd" if (task == "ec" and data_split == "random") else "noxpd2"
+        tar_file = f"{noxtype}_cnn_swissprot_{task}_{data_split}_swiss-cnn_for_swissprot_{task}_{data_split}-{id}.tar.gz"
         download_url = f"https://storage.googleapis.com/brain-genomics-public/research/proteins/proteinfer/models/zipped_models/{tar_file}"
         
         # Download the model
@@ -31,7 +33,7 @@ def download_and_extract_model(task:str,data_split:str,id:int,output_dir:str):
         run_command(f"mv -f {model_id_dir} {output_dir}")
         
         # Run the export script
-        run_command(f"conda run -n proteinfer python bin/export_proteinfer.py --model-path {output_dir / model_id_dir} --output-dir {output_dir} --model-name {task} --add-model-id")
+        run_command(f"conda run -n proteinfer python bin/export_proteinfer.py --model-path {output_dir / model_id_dir} --output-dir {output_dir} --model-name {model_file_name}")
 
         #Clean up. Orginal weights are not needed.
         
@@ -47,13 +49,18 @@ def main(task:str, data_split:str, ids:list, output_dir:str):
         download_and_extract_model(task = task, data_split = data_split, id = id, output_dir = output_dir)
 
 if __name__ == "__main__":
+
+
+    """
+    Sample usage: python bin/download_proteinfer_weights.py --task ec --data-split clustered --ids 13704042 13704073 13704099 --output-dir data/model_weights/
+    """
     parser = argparse.ArgumentParser(description="Run protein inference on multiple models")
 
     parser.add_argument(
         "--task",
         type=str,
         required=True,
-        help="Task for the model. Either GO or EC"
+        help="Task for the model. Either go or ec"
     )
 
     parser.add_argument(
@@ -79,4 +86,4 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
-    main(task = args.task, ids = args.ids)
+    main(task = args.task, ids = args.ids, output_dir=args.output_dir, data_split=args.data_split)

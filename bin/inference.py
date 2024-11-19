@@ -1,6 +1,6 @@
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
-from proteinfertorch.utils import read_json, read_yaml, generate_vocabularies, to_device
+from proteinfertorch.utils import read_json, read_yaml, to_device
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
 from proteinfertorch.utils import save_evaluation_results, probability_normalizer
 import torch

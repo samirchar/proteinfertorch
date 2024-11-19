@@ -1,11 +1,11 @@
 import json
 import os
 import sys
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Construct the path to the proteinfer directory
 proteinfer_dir = os.path.join(root_dir, 'proteinfer')
 sys.path.append(proteinfer_dir)
-import inference
+from proteinfer import inference
 import argparse
 import tensorflow as tf
 import tensorflow_hub as hub
@@ -22,7 +22,7 @@ def export_model_weights(
         
     suffix = model_path.split("-")[-1] if add_model_id else ""
     output_path = os.path.join(
-        output_dir, f"{model_name}_model_weights" + suffix + ".pkl"
+        output_dir, f"{model_name}" + suffix + ".pkl"
     )
     module_spec = hub.saved_model_module.create_module_spec_from_saved_model(model_path)
 
