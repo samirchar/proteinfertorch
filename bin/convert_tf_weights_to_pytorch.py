@@ -4,6 +4,18 @@ from proteinfertorch.config import ACTIVATION_MAP
 import torch
 import os
 import argparse
+from huggingface_hub import login
+from dotenv import load_dotenv
+from huggingface_hub import HfApi
+'''
+
+This script converts the weights of a ProteInfer model from TensorFlow to PyTorch, and optionally pushes the models to the Huggingface Hub.
+
+Example usage: python bin/convert_tf_weights_to_pytorch.py --input-dir data/model_weights/tf_weights --output-dir data/model_weights/ --push-to-hub --hf-username <username>
+
+'''
+load_dotenv()
+hfapi = HfApi(token=os.getenv("HF_TOKEN"))
 
 # Arguments that must be parsed first
 parser_first = argparse.ArgumentParser(add_help=False)
@@ -20,6 +32,7 @@ config = read_yaml(
 )
 
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
+
 parser.add_argument(
         "--input-dir",
         type=str,
@@ -31,17 +44,33 @@ parser.add_argument(
         "--output-dir",
         type=str,
         required=True,
-        help="The directory to save the pytorch weights",
+        help="Directory to save pytorch weights."
     )
+
+parser.add_argument(
+        "--push-to-hub",
+        action="store_true",
+        help="Push the models to the huggingface hub"
+    )
+
+parser.add_argument(
+    "--hf-username",
+    type=str,
+    default=None,
+    help="Huggingface username"
+)
 
 args = parser.parse_args()
 
+assert not (args.push_to_hub ^ (args.hf_username is not None)), "Please provide both hf_username and push_to_hub or neither"
+
 #Process all weights in tf_weights
 model_weights = os.listdir(args.input_dir)
-
+model_list = []
 for model_weight in model_weights:
     if "go" in model_weight and "random" in model_weight: #TODO: remove this. This should work for all tasks and data splits
-        task,data_split,model_id = model_weight.split("_")
+        task,data_split,model_id= model_weight.split("_")
+        model_id = model_id.split(".")[0]
 
         task_defaults = config[f'{task}_defaults']
         num_labels = task_defaults["output_dim"]
@@ -57,4 +86,19 @@ for model_weight in model_weights:
             num_resnet_blocks=task_defaults["num_resnet_blocks"],
             bottleneck_factor=task_defaults["bottleneck_factor"],
         )
-        model.save_pretrained(os.path.join(args.output_dir,f"{task}_{data_split}_{model_id}"))
+        model_list.append(f"{task}_{data_split}_{model_id}")
+        model.save_pretrained(os.path.join(args.output_dir,f"{task}_{data_split}_{model_id}")) 
+
+if args.push_to_hub:
+    # Get all exported models
+    for model_weight in model_list:
+        repo = hfapi.upload_folder(
+            folder_path=os.path.join(args.output_dir,model_weight),
+            repo_id = f"{args.hf_username}/proteinfertorch",
+            path_in_repo=model_weight,
+            repo_type='model',
+            commit_message=f'Upload model {task}_{data_split}_{model_id}',
+    )
+        
+
+    
