@@ -4,9 +4,8 @@ from proteinfertorch.config import ACTIVATION_MAP
 import torch
 import os
 import argparse
-from huggingface_hub import login
 from dotenv import load_dotenv
-from huggingface_hub import HfApi
+from huggingface_hub import login
 '''
 
 This script converts the weights of a ProteInfer model from TensorFlow to PyTorch, and optionally pushes the models to the Huggingface Hub.
@@ -15,8 +14,7 @@ Example usage: python bin/convert_tf_weights_to_pytorch.py --input-dir data/mode
 
 '''
 load_dotenv()
-hfapi = HfApi(token=os.getenv("HF_TOKEN"))
-
+login(token=os.getenv("HF_TOKEN"))
 # Arguments that must be parsed first
 parser_first = argparse.ArgumentParser(add_help=False)
 
@@ -66,7 +64,6 @@ assert not (args.push_to_hub ^ (args.hf_username is not None)), "Please provide 
 
 #Process all weights in tf_weights
 model_weights = os.listdir(args.input_dir)
-model_list = []
 for model_weight in model_weights:
     if "go" in model_weight and "random" in model_weight: #TODO: remove this. This should work for all tasks and data splits
         task,data_split,model_id= model_weight.split("_")
@@ -86,19 +83,14 @@ for model_weight in model_weights:
             num_resnet_blocks=task_defaults["num_resnet_blocks"],
             bottleneck_factor=task_defaults["bottleneck_factor"],
         )
-        model_list.append(f"{task}_{data_split}_{model_id}")
-        model.save_pretrained(os.path.join(args.output_dir,f"{task}_{data_split}_{model_id}")) 
-
-if args.push_to_hub:
-    # Get all exported models
-    for model_weight in model_list:
-        repo = hfapi.upload_folder(
-            folder_path=os.path.join(args.output_dir,model_weight),
-            repo_id = f"{args.hf_username}/proteinfertorch",
-            path_in_repo=model_weight,
-            repo_type='model',
-            commit_message=f'Upload model {task}_{data_split}_{model_id}',
-    )
+        model_name = f"{task}-{data_split}-{model_id}"
+        model.save_pretrained(os.path.join(args.output_dir,f"{model_name}")) 
         
+        if args.push_to_hub:
+            model.push_to_hub(
+                repo_id = f"{args.hf_username}/proteinfertorch-{model_name}",
+                private=True
+            )
+
 
     

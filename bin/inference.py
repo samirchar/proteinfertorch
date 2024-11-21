@@ -12,14 +12,18 @@ import re
 from collections import defaultdict
 from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC, BinaryF1Score, MultilabelBinnedAUPRC, BinaryBinnedAUPRC, Mean
 from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
+from huggingface_hub import login
+from dotenv import load_dotenv
 
 
 """
 example usage: 
-- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-path data/model_weights/tf_weights/go_random_13731645.pkl --map-bins 50
+- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir samirchar/proteinfertorch-go-random-13731645 --task go --map-bins 50
 
 """
 
+load_dotenv()
+login(token=os.getenv("HF_TOKEN"))
 logger = get_logger()
 
 # Arguments that must be parsed first
@@ -32,10 +36,10 @@ parser_first.add_argument('--config-dir',
 
 
 parser_first.add_argument(
-    "--weights-path",
+    "--task",
     type=str,
     required=True,
-    help="Path to the weights file"
+    help="Task for the model. Either go or ec"
 )
 
 initial_args, _ = parser_first.parse_known_args()
@@ -44,8 +48,7 @@ config = read_yaml(
     os.path.join(initial_args.config_dir, "config.yaml")
 )
 
-task = initial_args.weights_path.split("/")[-1][:2]
-task_defaults = config[f'{task}_defaults']
+task_defaults = config[f'{initial_args.task}_defaults']
 
 # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
@@ -62,6 +65,13 @@ parser.add_argument(
     type=str,
     required=True,
     help="Path to the vocabulary file"
+)
+
+parser.add_argument(
+    "--model-dir",
+    type=str,
+    required=True,
+    help="Directory to the model either on huggingface or local"
 )
 
 parser.add_argument(
@@ -137,9 +147,13 @@ parser.add_argument(
 # load args
 args = parser.parse_args()
 
+# variables
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+num_labels = task_defaults["output_dim"]
+label_normalizer = read_json(args.parenthood_path) if args.parenthood_path is not None else None
 
 
-
+#Load datasets
 test_dataset = ProteinDataset(
         data_path = args.data_path,
         vocabulary_path = args.vocabulary_path,
@@ -151,6 +165,7 @@ test_dataset = ProteinDataset(
 dataset_specs = [
                     {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["batch_size"]}
                     ]
+
 # dataset_specs = [
 #                     {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
 #                     {"dataset": ProteinDataset(),"type": "validation","name":"validation","shuffle": False,"drop_last": False,"batch_size": 32},
@@ -167,24 +182,11 @@ loaders = create_multiple_loaders(
 )
 
 
+model = ProteInfer.from_pretrained(
+    pretrained_model_name_or_path=args.model_dir,
+).to(device).eval()
 
-num_labels = task_defaults["output_dim"]
-model = ProteInfer.from_tf_pretrained(
-    weights_path=args.weights_path,
-    num_labels=num_labels,
-    input_channels=task_defaults["input_dim"],
-    output_channels=task_defaults["output_embedding_dim"],
-    kernel_size=task_defaults["kernel_size"],
-    activation=ACTIVATION_MAP[task_defaults["activation"]],
-    dilation_base=task_defaults["dilation_base"],
-    num_resnet_blocks=task_defaults["num_resnet_blocks"],
-    bottleneck_factor=task_defaults["bottleneck_factor"],
-)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model.to(device)
-model = model.eval()
 
-label_normalizer = read_json(args.parenthood_path) if args.parenthood_path is not None else None
 
 for loader_name, loader in loaders.items():
     logger.info(f"##{loader_name}##")
