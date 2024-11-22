@@ -16,7 +16,7 @@ from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
 
 """
 example usage: 
-- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-path data/model_weights/tf_weights/go_random_13731645.pkl --map-bins 50
+- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-path data/model_weights/tf_weights/go-random-13731645.pkl --map-bins 50
 
 """
 
@@ -44,8 +44,9 @@ config = read_yaml(
     os.path.join(initial_args.config_dir, "config.yaml")
 )
 
-task = initial_args.weights_path.split("/")[-1][:2]
-task_defaults = config[f'{task}_defaults']
+task, data_split, model_id = initial_args.weights_path.split("/")[-1].replace('.pkl','').split('-')
+task_defaults = config[f'{task}_{data_split}_defaults']
+base_architecture = config["base_architecture"]
 
 # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
@@ -107,7 +108,7 @@ parser.add_argument(
 parser.add_argument(
     "--num-workers",
     type=int,
-    default=config["training"]["num_workers"],
+    default=config["inference"]["num_workers"],
     help="Number of workers for dataloaders",
 )
 
@@ -172,13 +173,13 @@ num_labels = task_defaults["output_dim"]
 model = ProteInfer.from_tf_pretrained(
     weights_path=args.weights_path,
     num_labels=num_labels,
-    input_channels=task_defaults["input_dim"],
-    output_channels=task_defaults["output_embedding_dim"],
-    kernel_size=task_defaults["kernel_size"],
-    activation=ACTIVATION_MAP[task_defaults["activation"]],
-    dilation_base=task_defaults["dilation_base"],
-    num_resnet_blocks=task_defaults["num_resnet_blocks"],
-    bottleneck_factor=task_defaults["bottleneck_factor"],
+    input_channels=base_architecture["input_dim"],
+    output_channels=base_architecture["output_embedding_dim"],
+    kernel_size=base_architecture["kernel_size"],
+    activation=ACTIVATION_MAP[base_architecture["activation"]],
+    dilation_base=base_architecture["dilation_base"],
+    num_resnet_blocks=base_architecture["num_resnet_blocks"],
+    bottleneck_factor=base_architecture["bottleneck_factor"],
 )
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)

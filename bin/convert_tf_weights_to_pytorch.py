@@ -1,7 +1,7 @@
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.utils import read_yaml
 from proteinfertorch.config import ACTIVATION_MAP
-import torch
+import re
 import os
 import argparse
 from dotenv import load_dotenv
@@ -58,30 +58,39 @@ parser.add_argument(
     help="Huggingface username"
 )
 
+parser.add_argument(
+    "--regex-pattern",
+    type=str,
+    default="(go|ec)-(random|clustered)-[0-9]+",
+    help="Regex pattern to filter models"
+)
+
 args = parser.parse_args()
 
 assert not (args.push_to_hub ^ (args.hf_username is not None)), "Please provide both hf_username and push_to_hub or neither"
 
 #Process all weights in tf_weights
 model_weights = os.listdir(args.input_dir)
+base_architecture = config['base_architecture']
+p = re.compile(f"{args.regex_pattern}")
 for model_weight in model_weights:
-    if "go" in model_weight and "random" in model_weight: #TODO: remove this. This should work for all tasks and data splits
-        task,data_split,model_id= model_weight.split("_")
+    if p.match(model_weight):
+        task,data_split,model_id= model_weight.split("-")
         model_id = model_id.split(".")[0]
 
-        task_defaults = config[f'{task}_defaults']
+        task_defaults = config[f'{task}_{data_split}_defaults']
         num_labels = task_defaults["output_dim"]
 
         model = ProteInfer.from_tf_pretrained(
             weights_path=os.path.join(args.input_dir,model_weight),
             num_labels=num_labels,
-            input_channels=task_defaults["input_dim"],
-            output_channels=task_defaults["output_embedding_dim"],
-            kernel_size=task_defaults["kernel_size"],
-            activation=ACTIVATION_MAP[task_defaults["activation"]],
-            dilation_base=task_defaults["dilation_base"],
-            num_resnet_blocks=task_defaults["num_resnet_blocks"],
-            bottleneck_factor=task_defaults["bottleneck_factor"],
+            input_channels=base_architecture["input_dim"],
+            output_channels=base_architecture["output_embedding_dim"],
+            kernel_size=base_architecture["kernel_size"],
+            activation=ACTIVATION_MAP[base_architecture["activation"]],
+            dilation_base=base_architecture["dilation_base"],
+            num_resnet_blocks=base_architecture["num_resnet_blocks"],
+            bottleneck_factor=base_architecture["bottleneck_factor"],
         )
         model_name = f"{task}-{data_split}-{model_id}"
         model.save_pretrained(os.path.join(args.output_dir,f"{model_name}")) 

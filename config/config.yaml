@@ -37,6 +37,31 @@ paths: #Default paths. Can be modified by script args.
   parenthood_2019: "data/parenthood/parenthood_jul_2019.json"
   parenthood_2024: "data/parenthood/parenthood_jul_2024.json"
 
+base_architecture:
+  input_dim: 20
+  output_embedding_dim: 1100
+  kernel_size: 9
+  dilation_base: 3
+  num_resnet_blocks: 5
+  bottleneck_factor: 0.5
+  activation: "relu"
+
+go_random_defaults:
+  output_dim: 32102 # equal to the number of unique labels
+  threshold: 0.88134765625 #0.710102
+
+go_clustered_defaults:
+  output_dim: 32101 # equal to the number of unique labels
+  threshold: 0.88134765625 #TODO: TBD
+
+ec_random_defaults:
+  output_dim: 5134 # equal to the number of unique labels
+  threshold: 0.88134765625 #TODO: TBD
+
+ec_clustered_defaults:
+  output_dim: 5134 # equal to the number of unique labels
+  threshold: 0.88134765625 #TODO: TBD
+
 go_defaults:
   input_dim: 20
   output_embedding_dim: 1100
@@ -51,7 +76,7 @@ go_defaults:
 ec_defaults:
   input_dim: 20
   output_embedding_dim: 1100
-  output_dim: 32102 # equal to the number of unique labels
+  output_dim: 5134 # equal to the number of unique labels
   kernel_size: 9
   dilation_base: 3
   num_resnet_blocks: 5

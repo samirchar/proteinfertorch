@@ -48,7 +48,6 @@ config = read_yaml(
     os.path.join(initial_args.config_dir, "config.yaml")
 )
 
-task_defaults = config[f'{initial_args.task}_defaults']
 
 # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
@@ -90,7 +89,7 @@ parser.add_argument(
 parser.add_argument(
     "--threshold",
     type=float,
-    default=task_defaults["threshold"],
+    default=0.88,
 )
 
 parser.add_argument(
@@ -149,7 +148,6 @@ args = parser.parse_args()
 
 # variables
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-num_labels = task_defaults["output_dim"]
 label_normalizer = read_json(args.parenthood_path) if args.parenthood_path is not None else None
 
 
@@ -186,6 +184,7 @@ model = ProteInfer.from_pretrained(
     pretrained_model_name_or_path=args.model_dir,
 ).to(device).eval()
 
+num_labels = model.output_layer.out_features
 
 
 for loader_name, loader in loaders.items():
