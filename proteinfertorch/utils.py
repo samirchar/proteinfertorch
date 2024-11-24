@@ -8,6 +8,8 @@ import json
 import yaml
 import os
 import pandas as pd
+import random
+import transformers
 from proteinfertorch.config import get_logger
 from Bio.SeqRecord import SeqRecord
 
@@ -433,3 +435,13 @@ def save_evaluation_results(
     )
     logger.info(f"saving results to {probabilities_df_output_path}")
     probabilities_df.to_hdf(probabilities_df_output_path, key="probabilities_df", mode="w")
+
+
+def seed_everything(seed: int, device: str):
+    random.seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    transformers.set_seed(seed)

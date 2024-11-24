@@ -1,17 +1,18 @@
 training:
-  train_batch_size: 32
-  test_batch_size: 32
-  threshold: 0.5
+  train_batch_size: 40
+  test_batch_size: 128
+  threshold: 0.88134765625
   num_workers: 2
   pin_memory: true
   epochs: 50
-  map_bins: null
+  map_bins: 50 #Set to null to disable
 
   learning_rate: 0.001
   weight_decay: 0.0001
+  seed: 42
 
 inference:
-  batch_size: 512
+  batch_size: 128
   threshold: 0.5
   num_workers: 2
   pin_memory: true
@@ -36,6 +37,11 @@ paths: #Default paths. Can be modified by script args.
   outputs: "outputs/"
   parenthood_2019: "data/parenthood/parenthood_jul_2019.json"
   parenthood_2024: "data/parenthood/parenthood_jul_2024.json"
+
+wandb:
+  project: "protein-functions"
+  entity: "proteinfertorch"
+  name: "proteinfertorch"
 
 base_architecture:
   input_dim: 20

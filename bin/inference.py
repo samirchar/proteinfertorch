@@ -64,7 +64,7 @@ parser.add_argument(
     type=str,
     required=True,
     help="Path to the vocabulary file"
-)
+)  #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
 
 parser.add_argument(
     "--model-dir",
@@ -107,6 +107,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--batch-size",
+    type=int,
+    default=config["inference"]["batch_size"],
+    help="Batch size for inference",
+)
+
+parser.add_argument(
     "--unpin-memory",
     action="store_true",
     default=False,
@@ -143,6 +150,7 @@ parser.add_argument(
 )
 
 
+
 # load args
 args = parser.parse_args()
 
@@ -161,7 +169,7 @@ test_dataset = ProteinDataset(
         )
 
 dataset_specs = [
-                    {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["batch_size"]}
+                    {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.batch_size}
                     ]
 
 # dataset_specs = [
