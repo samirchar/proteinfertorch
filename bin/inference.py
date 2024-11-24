@@ -208,12 +208,12 @@ for loader_name, loader in loaders.items():
     }
 
     prob_norm = probability_normalizer(
-                        label_vocab=loader[0].dataset.label_vocabulary,
+                        label_vocab=loader.dataset.label_vocabulary,
                         applicable_label_dict = label_normalizer,
                         )
     
     with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
-        for batch_idx, batch in tqdm(enumerate(loader[0]), total=len(loader[0])):
+        for batch_idx, batch in tqdm(enumerate(loader), total=len(loader)):
             # Unpack the validation or testing batch
             (
                 sequence_onehots,
@@ -269,7 +269,7 @@ for loader_name, loader in loaders.items():
             logger.info("saving predictions...")
             save_evaluation_results(
                 results=test_results,
-                label_vocabulary=loader[0].dataset.label_vocabulary,
+                label_vocabulary=loader.dataset.label_vocabulary,
                 run_name=args.name,
                 output_dir=args.output_dir,
                 data_split_name=loader_name,

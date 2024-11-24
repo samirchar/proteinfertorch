@@ -133,7 +133,7 @@ def create_multiple_loaders(
     world_size: int = 1,
     rank: int = 0
 ) -> List[DataLoader]:
-    loaders = defaultdict(list)
+    loaders = {}
     for dataset_spec in dataset_specs:
 
         sequence_sampler = observation_sampler_factory(
@@ -155,7 +155,7 @@ def create_multiple_loaders(
             drop_last=dataset_spec['drop_last'],
             sampler=sequence_sampler
         )
-        loaders[dataset_spec["name"]].append(loader)
+        loaders[dataset_spec["name"]] = loader
 
     return loaders
 

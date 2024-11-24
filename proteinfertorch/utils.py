@@ -445,3 +445,26 @@ def seed_everything(seed: int, device: str):
     # Set a fixed value for the hash seed
     os.environ["PYTHONHASHSEED"] = str(seed)
     transformers.set_seed(seed)
+
+
+def save_checkpoint(model, optimizer, epoch, train_metrics, validation_metrics, model_path):
+    """
+    Save model and optimizer states as a checkpoint.
+
+    Args:
+    - model (torch.nn.Module): The model whose state we want to save.
+    - optimizer (torch.optim.Optimizer): The optimizer whose state we want to save.
+    - epoch (int): The current training epoch.
+    - model_path (str): The path where the checkpoint will be saved.
+    """
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "validation_metrics": validation_metrics,
+        "train_metrics": train_metrics
+    }
+
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+
+    torch.save(checkpoint, model_path)
