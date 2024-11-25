@@ -1,13 +1,17 @@
 train:
-  train_batch_size: 40
+  train_batch_size: 40 # per gpu for 8 gpus. Set to 320 for 1 gpu.
   test_batch_size: 128
   threshold: 0.88134765625
   num_workers: 2
   pin_memory: true
-  epochs: 50
+  epochs: 10 #383
   map_bins: 50 #Set to null to disable
 
-  learning_rate: 0.0003
+  lr: 0.015 #1.5e-3
+  lr_scheduler: "linear"
+  lr_decay: 0.997
+  lr_decay_steps: 1000
+  lr_warmup_steps: 3000
   weight_decay: 0
   seed: 42
   gradient_clip: 1
@@ -43,9 +47,8 @@ paths: #Default paths. Can be modified by script args.
   parenthood_2024: "data/parenthood/parenthood_jul_2024.json"
 
 wandb:
-  project: "protein-functions"
-  entity: "proteinfertorch"
-  name: "proteinfertorch"
+  project: "proteinfertorch"
+  entity: "protein-functions"
 
 base_architecture:
   input_dim: 20

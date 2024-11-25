@@ -28,7 +28,12 @@ from torch.nn.utils import clip_grad_norm_
 
 """
 example usage: 
-- python bin/train.py 
+
+From HF weights pretrained:
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir <username>/proteinfertorch-go-random-13731645 --task go --map-bins 50 --use-wandb
+
+From random weights with possibly custom architecture: #TODO: modify code to allow for custom architecture
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir <username>/proteinfertorch-go-random-13731645 --task go --map-bins 50 --use-wandb
 
 """
 
@@ -122,10 +127,38 @@ def main():
     )
 
     parser.add_argument(
-        "--learning-rate",
+        "--lr",
         type=float,
-        default=config["train"]["learning_rate"],
+        default=config["train"]["lr"],
         help="Learning rate for the optimizer"
+    )
+
+    parser.add_argument(
+        "--lr-scheduler",
+        type=str,
+        default=config["train"]["lr_scheduler"],
+        help="Learning rate scheduler for the optimizer"
+    )
+
+    parser.add_argument(
+        "--lr-decay",
+        type=float,
+        default=config["train"]["lr_decay"],
+        help="Learning rate decay for the optimizer"
+    )
+
+    parser.add_argument(
+        "--lr-decay-steps",
+        type=int,
+        default=config["train"]["lr_decay_steps"],
+        help="Number of steps to decay the learning rate"
+    )
+
+    parser.add_argument(
+        "--lr-warmup-steps",
+        type=int,
+        default=config["train"]["lr_warmup_steps"],
+        help="Number of steps to warm up the learning rate"
     )
 
     parser.add_argument(
@@ -298,9 +331,9 @@ def main():
 
 
 def evaluate(loader, model, metrics, loss_fn, device, prob_norm=None):
-    reset_metrics(metrics)
+    reset_metrics(metrics.values())
     with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
-        for _, batch in tqdm(enumerate(loader[0]), total=len(loader[0])):
+        for _, batch in tqdm(enumerate(loader), total=len(loader)):
             # Unpack the validation or testing batch
             (
                 sequence_onehots,
@@ -343,6 +376,7 @@ def evaluate(loader, model, metrics, loss_fn, device, prob_norm=None):
 def train(gpu,args):
     # initiate logger
     logger = get_logger()
+    load_dotenv()
 
     # Calculate GPU rank (based on node rank and GPU rank within the node) and initialize process group
     args.rank = args.nr * args.gpus + gpu
@@ -367,29 +401,27 @@ def train(gpu,args):
     device = torch.device("cuda:" + str(rank) if torch.cuda.is_available() else "cpu")
     logger.info(f"Using device: {device}")
 
-    seed_everything(args.seed)
+    # Set the seed for reproducibility
+    seed_everything(seed=args.seed,device=device)
     
 
     # Set the timezone for logging
     os.environ["TZ"] = "US/Pacific"
     time.tzset()
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S %Z").strip()
+    args.name = f"{args.name}_{timestamp}"
 
     # Initialize W&B, if using
     if is_master and args.use_wandb:
+        wandb.login(key=os.environ["WANDB_API_KEY"],relogin=True)
         wandb.init(
             project=args.wandb_project,
-            name=f"{args.name}_{timestamp}",
+            name=args.name,
             config=vars(args),
             sync_tensorboard=False,
-            entity=args.wandb_entity,
+            entity= args.wandb_entity
+            
         )
-
-    # label normalizer
-    prob_norm = probability_normalizer(
-                        label_vocab=loaders["train"].dataset.label_vocabulary,
-                        applicable_label_dict = read_json(args.parenthood_path)
-                        )  if args.parenthood_path is not None else None
 
     #Load datasets
     test_dataset = ProteinDataset(
@@ -409,7 +441,7 @@ def train(gpu,args):
             )
 
     train_dataset = ProteinDataset(
-            data_path = args.data_path,
+            data_path = args.train_data_path,
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
@@ -431,6 +463,12 @@ def train(gpu,args):
         rank = rank
     )
 
+    # label normalizer
+    prob_norm = probability_normalizer(
+                        label_vocab=loaders["train"].dataset.label_vocabulary,
+                        applicable_label_dict = read_json(args.parenthood_path)
+                        )  if args.parenthood_path is not None else None
+
     # Load model
     model = ProteInfer.from_pretrained(
         pretrained_model_name_or_path=args.model_dir,
@@ -443,30 +481,32 @@ def train(gpu,args):
     if args.world_size > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
-    model = DDP(model.to(rank), device_ids=[rank], find_unused_parameters=True)
+    model = DDP(model.to(rank), device_ids=[rank])
 
     #Define metrics
-    test_metrics = {
+    eval_metrics = {
         "map_micro": BinaryAUPRC(device="cpu") if args.map_bins is None else BinaryBinnedAUPRC(device="cpu", threshold=args.map_bins),
         "map_macro": MultilabelAUPRC(device="cpu", num_labels=num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=num_labels, threshold=args.map_bins),
         "f1_micro": BinaryF1Score(device=device, threshold=args.threshold),
         "avg_loss":  Mean(device=device)
     }
 
-    train_metrics = {test_metrics["avg_loss"],test_metrics["f1_micro"]} #Only need loss and f1 for training because mAP are compute intensive
+    reset_metrics(eval_metrics.values())
+
+    train_metrics = { k:v for k,v in eval_metrics.items() if k in ["avg_loss","f1_micro"]} #Only need loss and f1 for training because mAP are compute intensive
 
     #Loss function, optimizer, grad scaler, and label normalizer
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction="mean")
-    optimizer = torch.optim.AdamW(model.module.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = GradScaler()
     
     ## TRAINING LOOP ##
     best_validation_loss = float("inf")
     training_step = 0 #Keep track of the number of training steps
 
-    for epoch in range(1,args.epochs):
+    for epoch in range(args.epochs):
         logger.info(f"Starting epoch {epoch + 1} / {args.epochs}")
-        reset_metrics(train_metrics) #Reset metrics for the epoch
+        reset_metrics(train_metrics.values()) #Reset metrics for the epoch
 
         #Set the epoch for the sampler to shuffle the data
         if hasattr(loaders["train"].sampler, "set_epoch"):
@@ -522,23 +562,23 @@ def train(gpu,args):
         
         #Compute train and validation epoch metrics
         train_metrics = sync_and_compute_collection(train_metrics)
-        train_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
+        train_metrics_float = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
         # Log metrics
         logger.info(f"Finished epoch {epoch}")
-        logger.info("Train metrics:\n{}".format(train_metrics))
+        logger.info("Train metrics:\n{}".format(train_metrics_float))
         if args.use_wandb and is_master:
-            wandb.log(train_metrics, step=epoch)
+            wandb.log(train_metrics_float, step=epoch)
 
         # Validation every args.epochs_per_validation
         if (epoch + 1) % args.epochs_per_validation == 0:
             validation_metrics = evaluate(loader=loaders["validation"],
                                     model=model,
-                                    metrics=test_metrics,
+                                    metrics=eval_metrics,
                                     loss_fn=loss_fn,
                                     device=device,
                                     prob_norm=prob_norm
                                     )
-            validation_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
+            validation_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in validation_metrics.items()}
 
             # Log metrics
             logger.info("Validation metrics:\n{}".format(validation_metrics))
@@ -547,39 +587,40 @@ def train(gpu,args):
 
             # Save model checkpoint
             if is_master & (args.always_save_checkpoint or validation_metrics["avg_loss"] < best_validation_loss):
+                if validation_metrics["avg_loss"] < best_validation_loss:
+                    checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_best_checkpoint_{timestamp}.pt")
+                elif args.always_save_checkpoint:
+                    checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_checkpoint_epoch_{epoch}_{timestamp}.pt")
+
                 save_checkpoint(model = model.module,
-                                oprimizer = optimizer,
+                                optimizer = optimizer,
                                 epoch = epoch,
-                                val_metrics = validation_metrics,
-                                train_metrics = train_metrics,
-                                model_path = model_path)
+                                validation_metrics = validation_metrics,
+                                train_metrics = train_metrics_float,
+                                model_path = checkpoint_path
+                                )
     
-        ####### CLEANUP #######
-        logger.info(f"\n{'='*100}\nTraining  COMPLETE\n{'='*100}\n")
-        # W&B, MLFlow amd optional metric results saving
-        if is_master:
-            # Optionally save val/test results in json
-            # if args.save_eval_metrics:
-            #     metrics_results.append(run_metrics)
-            #     write_json(metrics_results, args.save_eval_metrics_file)
+    ####### CLEANUP #######
+    logger.info(f"\n{'='*100}\nTraining  COMPLETE\n{'='*100}\n")
+    # W&B, MLFlow amd optional metric results saving
+    if is_master:
+        # Optionally save val/test results in json
+        # if args.save_eval_metrics:
+        #     metrics_results.append(run_metrics)
+        #     write_json(metrics_results, args.save_eval_metrics_file)
 
-            # Log val metrics
-            if args.validation_path_name:
-                if args.use_wandb:
-                    wandb.log(validation_metrics)
+        # Close metric loggers
+        if args.use_wandb:
+            wandb.finish()
 
-            # Close metric loggers
-            if args.use_wandb:
-                wandb.finish()
-
-        # Loggers
-        handlers = logger.handlers[:]
-        for handler in handlers:
-            logger.removeHandler(handler)
-            handler.close()
-        # Torch
-        torch.cuda.empty_cache()
-        dist.destroy_process_group()
+    # Loggers
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        logger.removeHandler(handler)
+        handler.close()
+    # Torch
+    torch.cuda.empty_cache()
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()
