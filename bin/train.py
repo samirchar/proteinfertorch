@@ -2,7 +2,7 @@ from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_json, read_yaml, to_device, save_checkpoint
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
-from proteinfertorch.utils import save_evaluation_results, probability_normalizer, seed_everything
+from proteinfertorch.utils import save_evaluation_results, probability_normalizer, seed_everything, get_model
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -22,7 +22,8 @@ import torch.multiprocessing as mp
 import torch.distributed as dist
 from torch.amp import GradScaler
 from torch.nn.utils import clip_grad_norm_
-
+from torch.optim.lr_scheduler import LinearLR, SequentialLR, LambdaLR
+from proteinfertorch.schedulers import ExponentialDecay
 
 
 
@@ -30,10 +31,10 @@ from torch.nn.utils import clip_grad_norm_
 example usage: 
 
 From HF weights pretrained:
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir <username>/proteinfertorch-go-random-13731645 --task go --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir <username>/proteinfertorch-go-random-13731645 --map-bins 50 --use-wandb
 
 From random weights with possibly custom architecture: #TODO: modify code to allow for custom architecture
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir <username>/proteinfertorch-go-random-13731645 --task go --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --map-bins 50 --use-wandb
 
 """
 
@@ -49,23 +50,18 @@ def main():
                         help="Path to the configuration directory (default: config)")
 
 
-    parser_first.add_argument(
-        "--task",
-        type=str,
-        required=True,
-        help="Task for the model. Either go or ec"
-    )
 
     initial_args, _ = parser_first.parse_known_args()
 
     config = read_yaml(
         os.path.join(initial_args.config_dir, "config.yaml")
     )
-
+    
 
     # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
     parser = argparse.ArgumentParser(description="Train ProteInfer model.",parents=[parser_first])
 
+    # Data paths arguments
     parser.add_argument(
         "--train-data-path",
         type=str,
@@ -94,11 +90,11 @@ def main():
     ) #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
 
     parser.add_argument(
-        "--model-dir",
+        "--weights-dir",
         type=str,
         required=False,
         default=None,
-        help="Directory to the model either on huggingface or local. If not provided, a new model will be initialized."
+        help="Directory to the model weights either on huggingface or local. If not provided, a new model will be initialized."
     )
 
     parser.add_argument(
@@ -111,19 +107,70 @@ def main():
     parser.add_argument(
         "--parenthood-path",
         type=str,
-        default=config["paths"]["parenthood_2019"],
+        default= None, # config["paths"]["parenthood_2019"],
         help="""Path to the parenthood file. 
                 Must align with annotations release used in data path.
                 Can be None to skip normalization""",
         required=False
     )
 
+    # Model architecture arguments
     parser.add_argument(
-        "--name",
+        "--input-dim",
+        type=int,
+        default=config["base_architecture"]["input_dim"],
+        help="Input dimension for the model. Tyically 20 for amino acids."
+    )
+
+    parser.add_argument(
+        "--output-embedding-dim",
+        type=int,
+        default=config["base_architecture"]["output_embedding_dim"],
+        help="Output embedding dimension for the model."
+    )
+
+    parser.add_argument(
+        "--kernel-size",
+        type=int,
+        default=config["base_architecture"]["kernel_size"],
+        help="Kernel size for the model."
+    )
+
+    parser.add_argument(
+        "--activation",
         type=str,
-        default="proteinfertorch", 
-        help="Name of the W&B run and other generated files.",
-        required=False
+        default=config["base_architecture"]["activation"],
+        help="Activation function for the model."
+    )
+
+    parser.add_argument(
+        "--dilation-base",
+        type=int,
+        default=config["base_architecture"]["dilation_base"],
+        help="Dilation base for the model."
+    )
+
+    parser.add_argument(
+        "--num-resnet-blocks",
+        type=int,
+        default=config["base_architecture"]["num_resnet_blocks"],
+        help="Number of resnet blocks for the model."
+    )
+
+    parser.add_argument(
+        "--bottleneck-factor",
+        type=int,
+        default=config["base_architecture"]["bottleneck_factor"],
+        help="Bottleneck factor for the model within resnet blocks."
+    )
+
+    # Training arguments
+
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=config["train"]["seed"],
+        help="Seed for reproducibility",
     )
 
     parser.add_argument(
@@ -187,6 +234,13 @@ def main():
         action="store_true",
         default=False,
         help="Save the model checkpoint after every validation"
+    )
+
+    parser.add_argument(
+        "--no-checkpoints",
+        action="store_true",
+        default=False,
+        help="Do not save any model checkpoints"
     )
 
     parser.add_argument(
@@ -266,6 +320,14 @@ def main():
     )
 
     parser.add_argument(
+        "--amlt",
+        action="store_true",
+        default=False,
+        help="Run job on Amulet. Default is False.",
+    )
+
+    # Distributed training arguments
+    parser.add_argument(
         "-n",
         "--nodes",
         default=1,
@@ -282,12 +344,15 @@ def main():
         "-nr", "--nr", default=0, type=int, help="Ranking within the nodes"
     )
 
+    # W&B arguments
     parser.add_argument(
-        "--amlt",
-        action="store_true",
-        default=False,
-        help="Run job on Amulet. Default is False.",
+        "--name",
+        type=str,
+        default="proteinfertorch", 
+        help="Name of the W&B run and other generated files.",
+        required=False
     )
+
     parser.add_argument(
         "--use-wandb",
         action="store_true",
@@ -309,29 +374,28 @@ def main():
         help="Wandb entity name",
     )
 
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=config["train"]["seed"],
-        help="Seed for reproducibility",
-    )
 
     # load args
     args = parser.parse_args()
 
+
     args.world_size = args.gpus * args.nodes
-    if args.amlt:
-        # os.environ['MASTER_ADDR'] = os.environ['MASTER_IP']
-        args.nr = int(os.environ["NODE_RANK"])
+    if args.world_size > 1:
+        if args.amlt:
+            # os.environ['MASTER_ADDR'] = os.environ['MASTER_IP']
+            args.nr = int(os.environ["NODE_RANK"])
+        else:
+            os.environ["MASTER_ADDR"] = "localhost"
+            os.environ["MASTER_PORT"] = "8889"
+
+        mp.spawn(train, nprocs=args.gpus, args=(args,))
     else:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = "8889"
-
-    mp.spawn(train, nprocs=args.gpus, args=(args,))
+        train(0, args)
+        
 
 
-def evaluate(loader, model, metrics, loss_fn, device, prob_norm=None):
-    reset_metrics(metrics.values())
+def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
+    reset_metrics(metric_collection.values())
     with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
         for _, batch in tqdm(enumerate(loader), total=len(loader)):
             # Unpack the validation or testing batch
@@ -361,13 +425,13 @@ def evaluate(loader, model, metrics, loss_fn, device, prob_norm=None):
                     device=device,
                 )
 
-            metrics["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
-            metrics["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
-            metrics["f1_micro"].update(probabilities.flatten(), label_multihots.flatten())
-            metrics["avg_loss"].update(loss_fn(logits, label_multihots.float()))
+            metric_collection["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
+            metric_collection["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
+            metric_collection["f1_micro"].update(probabilities.flatten(), label_multihots.flatten())
+            metric_collection["avg_loss"].update(loss_fn(logits, label_multihots.float()))
 
         #Compute metrics
-        metrics = sync_and_compute_collection(metrics)
+        metrics = sync_and_compute_collection(metric_collection)
         metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in metrics.items()}
 
         return metrics
@@ -382,9 +446,11 @@ def train(gpu,args):
     args.rank = args.nr * args.gpus + gpu
     
     rank = args.nr * args.gpus + gpu
-    dist.init_process_group(
-        backend="nccl", init_method="env://", world_size=args.world_size, rank=rank
-    )
+
+    if args.world_size > 1:
+        dist.init_process_group(
+            backend="nccl", init_method="env://", world_size=args.world_size, rank=rank
+        )
 
     print(
         f"{'=' * 50}\n"
@@ -399,7 +465,9 @@ def train(gpu,args):
     # Set the GPU device, if using
     torch.cuda.set_device(rank)
     device = torch.device("cuda:" + str(rank) if torch.cuda.is_available() else "cpu")
-    logger.info(f"Using device: {device}")
+
+    if is_master:
+        logger.info(f"Using device: {device}")
 
     # Set the seed for reproducibility
     seed_everything(seed=args.seed,device=device)
@@ -448,6 +516,8 @@ def train(gpu,args):
             logger=None
             )
 
+    num_labels = len(train_dataset.label_vocabulary)
+
     data_loader_specs = [
                         {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.test_batch_size},
                         {"dataset": validation_dataset,"name":"validation","shuffle": False,"drop_last": False,"batch_size": args.test_batch_size},
@@ -470,43 +540,75 @@ def train(gpu,args):
                         )  if args.parenthood_path is not None else None
 
     # Load model
-    model = ProteInfer.from_pretrained(
-        pretrained_model_name_or_path=args.model_dir,
-    ).to(device).eval()
+    if args.weights_dir is not None:
+        if is_master:
+            logger.info(f"Loading model from pre-trained weights in {args.weights_dir}")
 
-    num_labels = model.output_layer.out_features
+        model = ProteInfer.from_pretrained(
+            pretrained_model_name_or_path=args.weights_dir,
+        ).to(device).eval()
+
+        assert model.output_layer.out_features == num_labels, "Number of labels in the model does not match the number of labels in the dataset"
+        
+    else:
+        if is_master:
+            logger.info(f"Initializing model from random weights")
+        model = ProteInfer(
+            num_labels=num_labels,
+            input_channels=args.input_dim,
+            output_channels=args.output_embedding_dim,
+            kernel_size=args.kernel_size,
+            activation=ACTIVATION_MAP[args.activation],
+            dilation_base=args.dilation_base,
+            num_resnet_blocks=args.num_resnet_blocks,
+            bottleneck_factor=args.bottleneck_factor,
+        ).to(device)
+
 
     # Wrap the model in DDP for distributed computing and sync batchnorm if needed.
     # TODO: This may be more flexible to allow for layer norm.
     if args.world_size > 1:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-
-    model = DDP(model.to(rank), device_ids=[rank])
+        model = DDP(model, device_ids=[gpu])
 
     #Define metrics
-    eval_metrics = {
+    metric_collection_eval = {
         "map_micro": BinaryAUPRC(device="cpu") if args.map_bins is None else BinaryBinnedAUPRC(device="cpu", threshold=args.map_bins),
         "map_macro": MultilabelAUPRC(device="cpu", num_labels=num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=num_labels, threshold=args.map_bins),
         "f1_micro": BinaryF1Score(device=device, threshold=args.threshold),
         "avg_loss":  Mean(device=device)
     }
 
-    reset_metrics(eval_metrics.values())
-
-    train_metrics = { k:v for k,v in eval_metrics.items() if k in ["avg_loss","f1_micro"]} #Only need loss and f1 for training because mAP are compute intensive
+    metric_collection_train = { k:v for k,v in metric_collection_eval.items() if k in ["avg_loss","f1_micro"]} #Only need loss and f1 for training because mAP are compute intensive
 
     #Loss function, optimizer, grad scaler, and label normalizer
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction="mean")
-    optimizer = torch.optim.AdamW(model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(get_model(model).parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = GradScaler()
+
+    #LR Schedule
+    lr_warmup_scheule = LinearLR(optimizer=optimizer,
+                                start_factor=1/args.lr_warmup_steps,
+                                end_factor=1,
+                                total_iters=args.lr_warmup_steps
+                                )
+
+    lr_decay_schedule = LambdaLR(optimizer = optimizer,
+                                    lr_lambda=ExponentialDecay(decay_steps=args.lr_decay_steps, decay_rate=args.lr_decay, staircase=True)
+                                    )
+
+    lr_scheduler = SequentialLR(optimizer=optimizer,
+                                schedulers = [lr_warmup_scheule, lr_decay_schedule],
+                                milestones=[args.lr_warmup_steps])
     
     ## TRAINING LOOP ##
     best_validation_loss = float("inf")
     training_step = 0 #Keep track of the number of training steps
 
     for epoch in range(args.epochs):
-        logger.info(f"Starting epoch {epoch + 1} / {args.epochs}")
-        reset_metrics(train_metrics.values()) #Reset metrics for the epoch
+        if is_master:
+            logger.info(f"Starting epoch {epoch + 1} / {args.epochs}")
+        reset_metrics(metric_collection_train.values()) #Reset metrics for the epoch
 
         #Set the epoch for the sampler to shuffle the data
         if hasattr(loaders["train"].sampler, "set_epoch"):
@@ -549,65 +651,77 @@ def train(gpu,args):
                 # Apply gradient clipping
                 if args.gradient_clip is not None:
                     clip_grad_norm_(
-                        model.module.parameters(), max_norm=args.gradient_clip
+                        get_model(model).parameters(), max_norm=args.gradient_clip
                     )
-
+                #optimization step
                 scaler.step(optimizer)
                 scaler.update()
+
+                # Zero the gradients
                 optimizer.zero_grad()
 
-            train_metrics["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
-            train_metrics["avg_loss"].update(loss_fn(logits.detach(), label_multihots.detach().float()))
+                # Update learning rate
+                # lr_scheduler.step()
+
+            metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
+            metric_collection_train["avg_loss"].update(loss_fn(logits.detach(), label_multihots.detach().float()))
 
         
         #Compute train and validation epoch metrics
-        train_metrics = sync_and_compute_collection(train_metrics)
-        train_metrics_float = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
+        train_metrics = sync_and_compute_collection(metric_collection_train)
+        train_metrics = {f"train_{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
+        
         # Log metrics
-        logger.info(f"Finished epoch {epoch}")
-        logger.info("Train metrics:\n{}".format(train_metrics_float))
-        if args.use_wandb and is_master:
-            wandb.log(train_metrics_float, step=epoch)
+        if is_master:
+            logger.info(f"Finished epoch {epoch}")
+            logger.info("Train metrics:\n{}".format(train_metrics))
+            if args.use_wandb:
+                wandb.log(train_metrics, step=epoch)
 
         # Validation every args.epochs_per_validation
         if (epoch + 1) % args.epochs_per_validation == 0:
             validation_metrics = evaluate(loader=loaders["validation"],
                                     model=model,
-                                    metrics=eval_metrics,
+                                    metric_collection=metric_collection_eval,
                                     loss_fn=loss_fn,
                                     device=device,
                                     prob_norm=prob_norm
                                     )
-            validation_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in validation_metrics.items()}
-
+            validation_metrics = {f"validation_{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in validation_metrics.items()}
+            
             # Log metrics
-            logger.info("Validation metrics:\n{}".format(validation_metrics))
-            if args.use_wandb and is_master:
-                wandb.log(validation_metrics, step=epoch)
+            if is_master:
+                logger.info("Validation metrics:\n{}".format(validation_metrics))
+                if args.use_wandb:
+                    wandb.log(validation_metrics, step=epoch)
 
             # Save model checkpoint
-            if is_master & (args.always_save_checkpoint or validation_metrics["avg_loss"] < best_validation_loss):
-                if validation_metrics["avg_loss"] < best_validation_loss:
+            if (is_master 
+                & (args.always_save_checkpoint or validation_metrics["validation_avg_loss"] < best_validation_loss)
+                & (not args.no_checkpoints)
+                ):
+                if validation_metrics["validation_avg_loss"] < best_validation_loss:
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_best_checkpoint_{timestamp}.pt")
                 elif args.always_save_checkpoint:
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_checkpoint_epoch_{epoch}_{timestamp}.pt")
 
-                save_checkpoint(model = model.module,
+                save_checkpoint(model = get_model(model),
                                 optimizer = optimizer,
                                 epoch = epoch,
                                 validation_metrics = validation_metrics,
-                                train_metrics = train_metrics_float,
+                                train_metrics = train_metrics,
                                 model_path = checkpoint_path
                                 )
     
     ####### CLEANUP #######
-    logger.info(f"\n{'='*100}\nTraining  COMPLETE\n{'='*100}\n")
+
     # W&B, MLFlow amd optional metric results saving
     if is_master:
+        logger.info(f"\n{'='*100}\nTraining  COMPLETE\n{'='*100}\n")
         # Optionally save val/test results in json
-        # if args.save_eval_metrics:
+        # if args.save_metric_collection_eval:
         #     metrics_results.append(run_metrics)
-        #     write_json(metrics_results, args.save_eval_metrics_file)
+        #     write_json(metrics_results, args.save_metric_collection_eval_file)
 
         # Close metric loggers
         if args.use_wandb:
@@ -620,7 +734,8 @@ def train(gpu,args):
         handler.close()
     # Torch
     torch.cuda.empty_cache()
-    dist.destroy_process_group()
+    if args.world_size > 1:
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()

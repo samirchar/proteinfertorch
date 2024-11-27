@@ -8,7 +8,7 @@ train:
   map_bins: 50 #Set to null to disable
 
   lr: 0.015 #1.5e-3
-  lr_scheduler: "linear"
+  lr_scheduler: "exponential"
   lr_decay: 0.997
   lr_decay_steps: 1000
   lr_warmup_steps: 3000

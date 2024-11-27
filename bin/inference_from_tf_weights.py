@@ -149,6 +149,9 @@ test_dataset = ProteinDataset(
         logger=None
         )
 
+num_labels = len(test_dataset.label_vocabulary)
+
+
 dataset_specs = [
                     {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": config["inference"]["batch_size"]}
                     ]
@@ -169,7 +172,7 @@ loaders = create_multiple_loaders(
 
 
 
-num_labels = task_defaults["output_dim"]
+
 model = ProteInfer.from_tf_pretrained(
     weights_path=args.weights_path,
     num_labels=num_labels,
@@ -181,6 +184,8 @@ model = ProteInfer.from_tf_pretrained(
     num_resnet_blocks=base_architecture["num_resnet_blocks"],
     bottleneck_factor=base_architecture["bottleneck_factor"],
 )
+assert model.output_layer.out_features == num_labels, "Number of labels in the model does not match the number of labels in the dataset"
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 model = model.eval()

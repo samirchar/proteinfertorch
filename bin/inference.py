@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 """
 example usage: 
-- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --model-dir samirchar/proteinfertorch-go-random-13731645 --task go --map-bins 50
+- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 --task go --map-bins 50
 
 """
 
@@ -67,10 +67,10 @@ parser.add_argument(
 )  #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
 
 parser.add_argument(
-    "--model-dir",
+    "--weights-dir",
     type=str,
     required=True,
-    help="Directory to the model either on huggingface or local"
+    help="Directory to the model weights either on huggingface or local"
 )
 
 parser.add_argument(
@@ -168,6 +168,8 @@ test_dataset = ProteinDataset(
         logger=None
         )
 
+num_labels = len(test_dataset.label_vocabulary)
+
 dataset_specs = [
                     {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.batch_size}
                     ]
@@ -189,10 +191,10 @@ loaders = create_multiple_loaders(
 
 
 model = ProteInfer.from_pretrained(
-    pretrained_model_name_or_path=args.model_dir,
+    pretrained_model_name_or_path=args.weights_dir,
 ).to(device).eval()
 
-num_labels = model.output_layer.out_features
+assert model.output_layer.out_features == num_labels, "Number of labels in the model does not match the number of labels in the dataset"
 
 
 for loader_name, loader in loaders.items():

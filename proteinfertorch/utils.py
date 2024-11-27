@@ -468,3 +468,9 @@ def save_checkpoint(model, optimizer, epoch, train_metrics, validation_metrics, 
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
     torch.save(checkpoint, model_path)
+
+
+# function that returns model.module if model is a DistributedDataParallel object
+# otherwise returns model
+def get_model(model):
+    return model.module if hasattr(model, "module") else model
