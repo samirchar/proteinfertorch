@@ -52,7 +52,7 @@ class ProteinDataset(Dataset):
             else self.data_path
         )
         self._preprocess_data(
-            vocabulary_path=vocabulary_path,
+            vocabulary_path=self.vocabulary_path,
         )
 
     def _preprocess_data(self, vocabulary_path: str):

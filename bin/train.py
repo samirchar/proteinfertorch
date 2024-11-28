@@ -86,6 +86,7 @@ def main():
         "--vocabulary-path",
         type=str,
         required=False,
+        default=None,
         help="Path to the vocabulary file"
     ) #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
 
@@ -185,6 +186,13 @@ def main():
         type=str,
         default=config["train"]["lr_scheduler"],
         help="Learning rate scheduler for the optimizer"
+    )
+
+    parser.add_argument(
+        "--lr-scheduler-staircase",
+        action="store_true",
+        default=False,
+        help="Whether to use staircase decay for the learning rate"
     )
 
     parser.add_argument(
@@ -396,6 +404,7 @@ def main():
 
 def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
     reset_metrics(metric_collection.values())
+    model.eval()
     with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
         for _, batch in tqdm(enumerate(loader), total=len(loader)):
             # Unpack the validation or testing batch
@@ -434,6 +443,7 @@ def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
         metrics = sync_and_compute_collection(metric_collection)
         metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in metrics.items()}
 
+        model.train()
         return metrics
             
 
@@ -546,7 +556,7 @@ def train(gpu,args):
 
         model = ProteInfer.from_pretrained(
             pretrained_model_name_or_path=args.weights_dir,
-        ).to(device).eval()
+        ).to(device)
 
         assert model.output_layer.out_features == num_labels, "Number of labels in the model does not match the number of labels in the dataset"
         
@@ -594,7 +604,7 @@ def train(gpu,args):
                                 )
 
     lr_decay_schedule = LambdaLR(optimizer = optimizer,
-                                    lr_lambda=ExponentialDecay(decay_steps=args.lr_decay_steps, decay_rate=args.lr_decay, staircase=True)
+                                    lr_lambda=ExponentialDecay(decay_steps=args.lr_decay_steps, decay_rate=args.lr_decay, staircase=args.lr_scheduler_staircase)
                                     )
 
     lr_scheduler = SequentialLR(optimizer=optimizer,
@@ -603,7 +613,11 @@ def train(gpu,args):
     
     ## TRAINING LOOP ##
     best_validation_loss = float("inf")
-    training_step = 0 #Keep track of the number of training steps
+    model.train() #Set the model to training mode
+
+    # Watch the model with W&B
+    if args.use_wandb:
+        wandb.watch(model, log = 'all')
 
     for epoch in range(args.epochs):
         if is_master:
@@ -614,7 +628,12 @@ def train(gpu,args):
         if hasattr(loaders["train"].sampler, "set_epoch"):
             loaders["train"].sampler.set_epoch(epoch) 
 
+        if args.use_wandb:
+            wandb.log({"learning_rate": optimizer.param_groups[0]["lr"]}, step=epoch)
+
         for batch_idx, batch in tqdm(enumerate(loaders['train']), total=len(loaders['train'])):
+            training_step = epoch * len(loaders['train']) + batch_idx
+
             # Unpack the validation or testing batch
             (
                 sequence_onehots,
@@ -661,7 +680,7 @@ def train(gpu,args):
                 optimizer.zero_grad()
 
                 # Update learning rate
-                # lr_scheduler.step()
+                lr_scheduler.step()
 
             metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
             metric_collection_train["avg_loss"].update(loss_fn(logits.detach(), label_multihots.detach().float()))

@@ -19,6 +19,7 @@ dependencies:
   - huggingface_hub=0.26.2 # for hf integration
   - transformers=4.45.2 # for hf integration
   - python-dotenv=1.0.1 # for env vars
+  - matplotlib=3.9.1 # for plotting
   - pip:
     - torcheval==0.0.7 # for evaluation
     - ipykernel==6.29.5 # for jupyter
