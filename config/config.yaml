@@ -4,7 +4,7 @@ train:
   threshold: 0.88134765625
   num_workers: 2
   pin_memory: true
-  epochs: 10 #383
+  epochs: 383
   map_bins: 50 #Set to null to disable
 
   lr: 0.015 #1.5e-3

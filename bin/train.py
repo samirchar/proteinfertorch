@@ -386,6 +386,7 @@ def main():
     # load args
     args = parser.parse_args()
 
+    
 
     args.world_size = args.gpus * args.nodes
     if args.world_size > 1:
@@ -434,9 +435,17 @@ def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
                     device=device,
                 )
 
-            metric_collection["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
-            metric_collection["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
-            metric_collection["f1_micro"].update(probabilities.flatten(), label_multihots.flatten())
+            #Create CPU Versions
+            # label_multihots = label_multihots.cpu()
+            # probabilities = probabilities.cpu()
+
+            #Create flattened versions
+            label_multihots_flat = label_multihots.flatten()
+            probabilities_flat = probabilities.flatten()
+
+            metric_collection["map_micro"].update(probabilities_flat, label_multihots_flat)
+            metric_collection["map_macro"].update(probabilities, label_multihots)
+            metric_collection["f1_micro"].update(probabilities_flat, label_multihots_flat)
             metric_collection["avg_loss"].update(loss_fn(logits, label_multihots.float()))
 
         #Compute metrics
@@ -451,6 +460,8 @@ def train(gpu,args):
     # initiate logger
     logger = get_logger()
     load_dotenv()
+
+
 
     # Calculate GPU rank (based on node rank and GPU rank within the node) and initialize process group
     args.rank = args.nr * args.gpus + gpu
@@ -478,6 +489,8 @@ def train(gpu,args):
 
     if is_master:
         logger.info(f"Using device: {device}")
+        # Log the arguments
+        logger.info(f"Arguments: {args}")
 
     # Set the seed for reproducibility
     seed_everything(seed=args.seed,device=device)
@@ -617,7 +630,7 @@ def train(gpu,args):
 
     # Watch the model with W&B
     if args.use_wandb:
-        wandb.watch(model, log = 'all')
+        wandb.watch(model, log = 'gradients')
 
     for epoch in range(args.epochs):
         if is_master:
@@ -628,11 +641,12 @@ def train(gpu,args):
         if hasattr(loaders["train"].sampler, "set_epoch"):
             loaders["train"].sampler.set_epoch(epoch) 
 
-        if args.use_wandb:
-            wandb.log({"learning_rate": optimizer.param_groups[0]["lr"]}, step=epoch)
-
         for batch_idx, batch in tqdm(enumerate(loaders['train']), total=len(loaders['train'])):
-            training_step = epoch * len(loaders['train']) + batch_idx
+            
+            # Calculate training step considering gradient accumulation
+            global_batch_idx = (epoch * len(loaders['train']) + batch_idx)
+            global_step =  global_batch_idx // args.gradient_accumulation_steps
+            
 
             # Unpack the validation or testing batch
             (
@@ -655,14 +669,15 @@ def train(gpu,args):
                 logits = model(sequence_onehots, sequence_lengths)
 
                 # Compute loss, normalized by the number of gradient accumulation step  
-                loss = loss_fn(logits, label_multihots.float()) / args.gradient_accumulation_steps
+                loss = loss_fn(logits, label_multihots.float())
+                scaled_loss = loss / args.gradient_accumulation_steps
             
             # Backward pass with mixed precision
-            scaler.scale(loss).backward()
+            scaler.scale(scaled_loss).backward()
 
-            # Gradient accumulation every gradient_accumulation_steps
-            if (training_step % args.gradient_accumulation_steps == 0) or ( 
-                batch_idx + 1 == len(loaders)
+            # Gradient accumulation every gradient_accumulation_steps or at the end of the epoch
+            if (batch_idx % args.gradient_accumulation_steps == 0) or ( 
+                batch_idx + 1 == len(loaders["train"])
             ):
                 # Unscales the gradients of optimizer's assigned params in-place
                 scaler.unscale_(optimizer)
@@ -682,10 +697,15 @@ def train(gpu,args):
                 # Update learning rate
                 lr_scheduler.step()
 
-            metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
-            metric_collection_train["avg_loss"].update(loss_fn(logits.detach(), label_multihots.detach().float()))
+                
+                wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
+                wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
 
-        
+            metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
+            metric_collection_train["avg_loss"].update(loss.detach())
+
+
+            
         #Compute train and validation epoch metrics
         train_metrics = sync_and_compute_collection(metric_collection_train)
         train_metrics = {f"train_{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
@@ -695,7 +715,9 @@ def train(gpu,args):
             logger.info(f"Finished epoch {epoch}")
             logger.info("Train metrics:\n{}".format(train_metrics))
             if args.use_wandb:
-                wandb.log(train_metrics, step=epoch)
+                wandb.log({**train_metrics,
+                           **{"epoch":epoch, 
+                              "learning_rate": optimizer.param_groups[0]["lr"]}}, step=global_step)
 
         # Validation every args.epochs_per_validation
         if (epoch + 1) % args.epochs_per_validation == 0:
@@ -712,7 +734,7 @@ def train(gpu,args):
             if is_master:
                 logger.info("Validation metrics:\n{}".format(validation_metrics))
                 if args.use_wandb:
-                    wandb.log(validation_metrics, step=epoch)
+                    wandb.log(validation_metrics, step=global_step)
 
             # Save model checkpoint
             if (is_master 
