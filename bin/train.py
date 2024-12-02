@@ -452,11 +452,14 @@ def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
         metrics = sync_and_compute_collection(metric_collection)
         metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in metrics.items()}
 
-        model.train()
-        return metrics
+    model.train()
+    reset_metrics(metric_collection.values())
+    return metrics
             
 
 def train(gpu,args):
+    torch.cuda.memory._record_memory_history()
+
     # initiate logger
     logger = get_logger()
     load_dotenv()
@@ -652,7 +655,7 @@ def train(gpu,args):
             (
                 sequence_onehots,
                 sequence_lengths,
-                sequence_ids,
+                _,
                 label_multihots
             ) = (
                 batch["sequence_onehots"],
@@ -697,12 +700,13 @@ def train(gpu,args):
                 # Update learning rate
                 lr_scheduler.step()
 
-                
-                wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
-                wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
+                if is_master and args.use_wandb:
+                    wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
+                    wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
 
             metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
             metric_collection_train["avg_loss"].update(loss.detach())
+
 
 
             
@@ -753,6 +757,7 @@ def train(gpu,args):
                                 train_metrics = train_metrics,
                                 model_path = checkpoint_path
                                 )
+                best_validation_loss = validation_metrics["validation_avg_loss"]
     
     ####### CLEANUP #######
 
@@ -778,5 +783,6 @@ def train(gpu,args):
     if args.world_size > 1:
         dist.destroy_process_group()
 
+    torch.cuda.memory._dump_snapshot('memory_snapshot_v2.pickle')
 if __name__ == "__main__":
     main()
