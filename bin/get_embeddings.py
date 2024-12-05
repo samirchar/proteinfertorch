@@ -1,19 +1,12 @@
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
-from proteinfertorch.utils import read_json, read_yaml, to_device
-from proteinfertorch.config import get_logger, ACTIVATION_MAP
-from proteinfertorch.utils import save_evaluation_results, probability_normalizer
+from proteinfertorch.utils import read_yaml, to_device
+from proteinfertorch.config import get_logger
 import torch
 import numpy as np
 from tqdm import tqdm
 import argparse
 import os
-import re
-from collections import defaultdict
-from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC, BinaryF1Score, MultilabelBinnedAUPRC, BinaryBinnedAUPRC, Mean
-from torcheval.metrics.toolkit import sync_and_compute_collection, reset_metrics
-from huggingface_hub import login
-from dotenv import load_dotenv
 
 
 """
