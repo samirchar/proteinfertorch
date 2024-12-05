@@ -11,6 +11,7 @@ import os
 import time
 import datetime
 import wandb
+import csv
 import re
 from collections import defaultdict
 from torcheval.metrics import MultilabelAUPRC, BinaryAUPRC, BinaryF1Score, MultilabelBinnedAUPRC, BinaryBinnedAUPRC, Mean
@@ -37,6 +38,69 @@ From random weights with possibly custom architecture: #TODO: modify code to all
 - python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --map-bins 50 --use-wandb
 
 """
+class MemoryLogger:
+    def __init__(self, file_path, is_master):
+        """
+        Initialize the MemoryLogger class and write the header to the CSV file.
+        :param file_path: Path to the CSV file.
+        """
+        self.is_master = is_master
+        self.file_path = file_path
+        self.metrics = [
+            "global_step",
+            "global_batch_idx",
+            'max_seq_length',
+            'min_seq_length',
+            "stage",
+            "allocated_MB",
+            "max_allocated_MB",
+            "allocated_percent",
+            "max_allocated_percent",
+        ]
+        # Initialize the CSV file with a header
+        if self.is_master:
+            with open(self.file_path, mode='w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(self.metrics)
+
+    def log(self, stage, global_step, global_batch_idx,max_seq_length,min_seq_length):
+        """
+        Log memory usage metrics for the current iteration and stage.
+        :param stage: A string describing the stage (e.g., "After forward pass").
+        """
+
+        if not self.is_master:
+            return
+        
+        allocated = torch.cuda.memory_allocated()
+        max_allocated = torch.cuda.max_memory_allocated()
+        total_memory = torch.cuda.get_device_properties(0).total_memory
+
+        allocated_percent = (allocated / total_memory) * 100
+        max_allocated_percent = (max_allocated / total_memory) * 100
+
+        # Write data to the CSV file
+        with open(self.file_path, mode='a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                global_step,
+                global_batch_idx,
+                max_seq_length,
+                min_seq_length,
+                stage,
+                allocated / 1e6,  # Convert bytes to MB
+                max_allocated / 1e6,  # Convert bytes to MB
+                allocated_percent,
+                max_allocated_percent,
+            ])
+
+
+    def reset_peak_memory(self):
+        """
+        Reset the peak memory statistics.
+        """
+        if self.is_master:
+            torch.cuda.reset_peak_memory_stats()
 
 def main():
 
@@ -458,7 +522,7 @@ def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
             
 
 def train(gpu,args):
-    torch.cuda.memory._record_memory_history()
+    # torch.cuda.memory._record_memory_history()
 
     # initiate logger
     logger = get_logger()
@@ -667,16 +731,30 @@ def train(gpu,args):
             sequence_onehots, sequence_lengths, label_multihots = to_device(
                 device, sequence_onehots, sequence_lengths, label_multihots
             )
+
+            max_seq_length,min_seq_length = sequence_lengths.max().item(),sequence_lengths.min().item() #TODO: remove this
+
+            if is_master and args.use_wandb:
+                wandb.log(
+                    {"max_seq_length": max_seq_length,
+                    "min_seq_length": min_seq_length,
+                    "max_to_min_seq_length_ratio": max_seq_length/min_seq_length},
+                    step=global_step
+                )
+                
             with torch.amp.autocast(enabled=True,device_type=device.type): 
                 # Forward pass
                 logits = model(sequence_onehots, sequence_lengths)
+                
 
                 # Compute loss, normalized by the number of gradient accumulation step  
                 loss = loss_fn(logits, label_multihots.float())
                 scaled_loss = loss / args.gradient_accumulation_steps
             
+            
             # Backward pass with mixed precision
             scaler.scale(scaled_loss).backward()
+            
 
             # Gradient accumulation every gradient_accumulation_steps or at the end of the epoch
             if (batch_idx % args.gradient_accumulation_steps == 0) or ( 
@@ -700,15 +778,17 @@ def train(gpu,args):
                 # Update learning rate
                 lr_scheduler.step()
 
+                
+
                 if is_master and args.use_wandb:
                     wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
                     wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
 
             metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
             metric_collection_train["avg_loss"].update(loss.detach())
-
-
-
+            
+        
+        
             
         #Compute train and validation epoch metrics
         train_metrics = sync_and_compute_collection(metric_collection_train)
@@ -734,6 +814,7 @@ def train(gpu,args):
                                     )
             validation_metrics = {f"validation_{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in validation_metrics.items()}
             
+
             # Log metrics
             if is_master:
                 logger.info("Validation metrics:\n{}".format(validation_metrics))
@@ -783,6 +864,6 @@ def train(gpu,args):
     if args.world_size > 1:
         dist.destroy_process_group()
 
-    torch.cuda.memory._dump_snapshot('memory_snapshot_v2.pickle')
+    # torch.cuda.memory._dump_snapshot('memory_snapshot_v2.pickle')
 if __name__ == "__main__":
     main()

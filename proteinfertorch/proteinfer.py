@@ -28,9 +28,10 @@ def set_padding_to_sentinel(
     device = padded_representations.device
 
     # Create a mask that identifies padding, ensuring it's on the same device
-    mask = torch.arange(max_sequence_length, device=device).expand(
-        batch_size, max_sequence_length
-    ) >= sequence_lengths.unsqueeze(1).to(device)
+    with torch.no_grad():
+        mask = torch.arange(max_sequence_length, device=device).expand(
+            batch_size, max_sequence_length
+        ) >= sequence_lengths.unsqueeze(1).to(device)
 
     # Expand the mask to cover the 'dim' dimension
     mask = mask.unsqueeze(1).expand(-1, dim, -1)

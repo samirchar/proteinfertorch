@@ -1,0 +1,38 @@
+# For field details: https://amulet-docs.azurewebsites.net/config_file.html
+description: testing
+
+target:
+  service: sing
+  name: msrresrchvc
+  workspace_name: bio0-ext
+environment:
+  image: torch2.5.1cuda12.4:v1.0
+  registry: bio0extcr.azurecr.io
+  username: bio0extcr
+
+code:
+  local_dir: $CONFIG_DIR/ 
+
+data:
+  local_dir: $CONFIG_DIR/data
+  remote_dir: data
+
+# SKU usage: G1 (single GPU), G4 (quad GPU), G4-V100 (1 machine, 4 V100 gpus), etc...
+jobs:
+- name: 'proteinfertorch_test' 
+  sku: 80G8-A100-NvLink
+  priority: high
+  preemptible: False
+  command:
+  - python bin/train.py
+    --train-data-path data/random_split/train_GO.fasta
+    --validation-data-path data/random_split/dev_GO.fasta
+    --test-data-path data/random_split/test_GO.fasta
+    --vocabulary-path data/random_split/full_GO.fasta
+    --threshold 0.5
+    --use-wandb
+    --name go-random
+  submit_args:
+    env:
+      WANDB_BASE_URL: "https://microsoft-research.wandb.io"
+      WANDB_API_KEY: "$WANDB_API_KEY"

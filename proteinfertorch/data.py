@@ -54,8 +54,26 @@ class ProteinDataset(Dataset):
         self._preprocess_data(
             vocabulary_path=self.vocabulary_path,
         )
+    def _clean_data(self):
+        """
+        Remove sequences that are too long or duplicated
+        """
+        current_sequences = set()
+        clean_data = []
+        for seq in self.data:
+            if len(seq[0]) <= self.max_sequence_length:
+                if self.deduplicate:
+                    if seq[0] not in current_sequences:
+                        current_sequences.add(seq[0])
+                        clean_data.append(seq)
+                else:
+                    clean_data.append(seq)
+        self.data = clean_data
+        del clean_data
 
     def _preprocess_data(self, vocabulary_path: str):
+
+        self._clean_data()
 
         vocabularies = generate_vocabularies(file_path=vocabulary_path)
 

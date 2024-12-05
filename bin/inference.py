@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 """
 example usage: 
-- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 --task go --map-bins 50
+- python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 --map-bins 50
 
 """
 
@@ -34,13 +34,6 @@ parser_first.add_argument('--config-dir',
                     default="config",
                     help="Path to the configuration directory (default: config)")
 
-
-parser_first.add_argument(
-    "--task",
-    type=str,
-    required=True,
-    help="Task for the model. Either go or ec"
-)
 
 initial_args, _ = parser_first.parse_known_args()
 
@@ -123,7 +116,7 @@ parser.add_argument(
 parser.add_argument(
     "--num-workers",
     type=int,
-    default=config["training"]["num_workers"],
+    default=config["inference"]["num_workers"],
     help="Number of workers for dataloaders",
 )
 
@@ -173,12 +166,6 @@ num_labels = len(test_dataset.label_vocabulary)
 dataset_specs = [
                     {"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.batch_size}
                     ]
-
-# dataset_specs = [
-#                     {"dataset": ProteinDataset(),"type": "train","name":"train","shuffle": True,"drop_last": True,"batch_size": 32},
-#                     {"dataset": ProteinDataset(),"type": "validation","name":"validation","shuffle": False,"drop_last": False,"batch_size": 32},
-#                     {"dataset": ProteinDataset(),"type": "test","name":"test","shuffle": False,"drop_last": False,"batch_size": 32}
-#                     ]
 
 # Define data loaders
 loaders = create_multiple_loaders(

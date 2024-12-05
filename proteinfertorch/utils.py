@@ -474,3 +474,14 @@ def save_checkpoint(model, optimizer, epoch, train_metrics, validation_metrics, 
 # otherwise returns model
 def get_model(model):
     return model.module if hasattr(model, "module") else model
+
+
+def load_emeddings(dir:str, num_partitions:int = -1):
+    partitions = os.listdir(dir)
+    total_partitions = len(partitions)
+    num_partitions = total_partitions if num_partitions == -1 else num_partitions
+    embeddings = []
+    for partition_idx in range(num_partitions):
+        embeddings.append(torch.load(f"{dir}/{partitions[partition_idx]}"))
+
+    return torch.cat(embeddings, dim=0)
