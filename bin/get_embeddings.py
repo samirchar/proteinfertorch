@@ -22,8 +22,8 @@ example usage:
 
 """
 
-load_dotenv()
-login(token=os.getenv("HF_TOKEN"))
+# load_dotenv()
+# login(token=os.getenv("HF_TOKEN"))
 logger = get_logger()
 
 # Arguments that must be parsed first
