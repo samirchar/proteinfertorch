@@ -3,12 +3,11 @@ description: testing
 
 target:
   service: sing
-  name: msrresrchvc
+  name: msrresrchlab
   workspace_name: bio0-ext
 environment:
-  image: torch2.5.1cuda12.4:v1.0
+  image: torch2.5.1cuda12.4:v2.0
   registry: bio0extcr.azurecr.io
-  username: bio0extcr
 
 code:
   local_dir: $CONFIG_DIR/ 
@@ -20,7 +19,7 @@ data:
 # SKU usage: G1 (single GPU), G4 (quad GPU), G4-V100 (1 machine, 4 V100 gpus), etc...
 jobs:
 - name: 'proteinfertorch_test' 
-  sku: 80G8-A100-NvLink
+  sku: G8-V100
   priority: high
   preemptible: False
   command:
@@ -36,3 +35,4 @@ jobs:
     env:
       WANDB_BASE_URL: "https://microsoft-research.wandb.io"
       WANDB_API_KEY: "$WANDB_API_KEY"
+      _AZUREML_SINGULARITY_JOB_UAI:  /subscriptions/7be94754-107d-43b8-b840-202dff0e7cae/resourceGroups/bio0-ext/providers/Microsoft.ManagedIdentity/userAssignedIdentities/bio0-ext-uai

@@ -485,3 +485,109 @@ def load_emeddings(dir:str, num_partitions:int = -1):
         embeddings.append(torch.load(f"{dir}/{partitions[partition_idx]}"))
 
     return torch.cat(embeddings, dim=0)
+
+
+
+HF_MODEL_CARD_TEMPLATE = '''
+# Model Card for {model_name}
+
+<!-- Provide a quick summary of what the model is/does. -->
+
+Unofficial PyTorch version of ProteInfer (https://github.com/google-research/proteinfer), originally implemented in TensorFlow 1.X. 
+
+ProteInfer is a model for protein function prediction that is trained to predict the functional properties of protein sequences using Deep Learning.
+Authors provide pre-trained models for two tasks: Gene Ontology (GO) and Enzyme Commission (EC) number prediction, as well as two data splits two data splits: random and clustered.
+Additionally, for every task and data split combination, authors trained multiple models using different random seeds.
+
+This model is trained on the {task} task with the {data_split} data split, and corresponds to the model with ID {model_id} in the original ProteInfer repository.
+
+## Model Details
+
+### Model Description
+
+For all the details about the model, please refer to the original ProteInfer paper: https://elifesciences.org/articles/80942.
+
+- **Developed by:** 
+- **Model type:** Dilated Convolutional Neural Network
+- **License:** 
+
+### Model Sources
+
+<!-- Provide the basic links for the model. -->
+
+- **Repository:** https://github.com/samirchar/proteinfertorch
+
+## Uses
+
+### Direct Use
+
+This model is intended for research use. It can be used for protein function prediction tasks, such as Gene Ontology (GO) and Enzyme Commission (EC) number prediction, or
+as a feature extractor for protein sequences.
+
+### Downstream Use [optional]
+
+<!-- This section is for the model use when fine-tuned for a task, or when plugged into a larger ecosystem/app -->
+
+This model can be fine-tuned for any task that can benefit from function-aware protein embeddings.
+
+## Bias, Risks, and Limitations
+
+- This model is intended for use on protein sequences. It is not meant for other biological sequences, such as DNA sequences.
+
+## How to Get Started with the Model
+
+```
+git clone https://github.com/samirchar/proteinfertorch
+cd proteinfertorch
+conda env create -f environment.yml
+conda activate proteinfertorch
+pip install -e ./  # make sure ./ is the dir including setup.py
+```
+
+For detailed instructions on package usage, please refer to the README in model repo
+
+## Evaluation
+
+### Results
+
+<!-- Provide the results of the model on standard benchmarks. -->
+
+
+## Environmental Impact
+
+<!-- Total emissions (in grams of CO2eq) and additional considerations, such as electricity usage, go here. Edit the suggested text below accordingly -->
+
+Carbon emissions can be estimated using the [Machine Learning Impact calculator](https://mlco2.github.io/impact#compute) presented in [Lacoste et al. (2019)](https://arxiv.org/abs/1910.09700).
+
+- **Hardware Type:** 
+- **Hours used:** 
+- **Cloud Provider:** 
+- **Compute Region:** 
+- **Carbon Emitted:** 
+
+## Technical Specifications [optional]
+
+### Compute Infrastructure
+
+8xV100 GPU cluster
+
+
+## Citation [optional]
+
+<!-- If there is a paper or blog post introducing the model, the APA and Bibtex information for that should go in this section. -->
+
+**BibTeX:**
+
+
+
+**APA:**
+
+
+## Model Card Authors
+
+Samir Char
+
+## Model Card Contact
+
+Samir Char
+'''
