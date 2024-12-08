@@ -12,9 +12,9 @@ The table below summarizes ProteInferTorch's performance on the original ProteIn
 | Data Split | Task  | ProteInfer  | ProteInferTorch | Weights 🤗 |
 |------------|-------|-------------|-----------------|------------|
 | random     | GO    | 0.885       |      0.886      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13731645)       |
-| clustered  | GO    | Not Reported|      0.784      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13703731)       |
-| random     | EC    | 0.977       |      0.979      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13685140)       |
-| clustered  | EC    | 0.914       |      0.914      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13704042)       |
+| clustered  | GO    | Not Reported|      0.784      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-clustered-13703731)       |
+| random     | EC    | 0.977       |      0.979      |  [Link](https://huggingface.co/samirchar/proteinfertorch-ec-random-13685140)       |
+| clustered  | EC    | 0.914       |      0.914      |  [Link](https://huggingface.co/samirchar/proteinfertorch-ec-random-13704042)       |
 
 
 TODO: ProteInferTorch's performance when training from scratch (i.e., random weights)
@@ -74,8 +74,30 @@ To start from pretrained weights:
 python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 
 ```
 
+## Citation
+
+If you use this model in your work, I would greatly appreciate it if you could cite it as follows:
+
+```bibtex
+@misc{yourname2024pytorchmodel,
+  title={ProteInferTorch: a PyTorch implementation of ProteInfer},
+  version={v1.0.0},
+
+  author={Samir Char},
+  year={2024},
+  month={12},
+  day={08},
+  doi={10.5281/zenodo.1234567},
+  url={https://github.com/samirchar/proteinfertorch}
+}
+```
+
 ## Additional scripts
-This section 
+This section describes additional scripts available in the bin folder
+
+### Create datasets
+
+The following code create train, dev and test FASTA files for both tasks and data splits from the original datasets in tfrecord format.
 
 ```
 conda env create -f proteinfer_conda_requirements.yml
@@ -84,13 +106,18 @@ python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotat
 python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types EC
 python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types GO
 python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types EC
+conda activate proteinfertorch
 ```
 
-Download all tensorflow weights for all tasks and splits (WARNING: There are close to 100 different weights):
+### Extract TF weights
+
+Use the following code to download the original tensorflow weights for the two tasks and data splits, and convert them pkl format:
 
 ```
-python bin/download_proteinfer_weights.py --task go --data-split clustered --ids all --output-dir data/model_weights/tf_weights/
-python bin/download_proteinfer_weights.py --task go --data-split random --ids all --output-dir data/model_weights/tf_weights/
-python bin/download_proteinfer_weights.py --task ec --data-split clustered --ids all --output-dir data/model_weights/tf_weights/
-python bin/download_proteinfer_weights.py --task ec --data-split random --ids all --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task go --data-split clustered --ids 13703731 --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task go --data-split random --ids 13731645 --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task ec --data-split clustered --ids 13704042 --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task ec --data-split random --ids 13685140 --output-dir data/model_weights/tf_weights/
 ```
+
+
