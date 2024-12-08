@@ -489,7 +489,7 @@ def load_emeddings(dir:str, num_partitions:int = -1):
 
 
 HF_MODEL_CARD_TEMPLATE = '''
-# Model Card for {model_name}
+# Model Card for ProteInferTorch trained on {task} task with {data_split} data split
 
 Unofficial PyTorch version of ProteInfer (https://github.com/google-research/proteinfer), originally implemented in TensorFlow 1.X. 
 
@@ -556,13 +556,21 @@ TODO: Add table comparing the performance of this model with the original Tensor
 
 ## Citation
 
-<!-- If there is a paper or blog post introducing the model, the APA and Bibtex information for that should go in this section. -->
-
 **BibTeX:**
+If you use this model in your work, I would greatly appreciate it if you could cite it as follows:
 
-
-
-**APA:**
+```bibtex
+@misc{{yourname2024pytorchmodel,
+  title={{ProteInferTorch: a PyTorch implementation of ProteInfer}},
+  version={{v1.0.0}},
+  author={{Samir Char}},
+  year={{2024}},
+  month={{12}},
+  day={{08}},
+  doi={{10.5281/zenodo.1234567}},
+  url={{https://github.com/samirchar/proteinfertorch}}
+}}
+```
 
 
 ## Model Card Authors
