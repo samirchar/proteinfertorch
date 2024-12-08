@@ -1,5 +1,0 @@
-data split," task"," ProteInfer"," ProteInferTorch"
-random,GO,0.885,
-clustered,GO,Not Reported,
-random,EC,0.977,
-clustered,EC,0.914,

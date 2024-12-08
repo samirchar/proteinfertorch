@@ -12,7 +12,7 @@ The table below summarizes ProteInferTorch's performance on the original ProteIn
 | Data Split | Task  | ProteInfer  | ProteInferTorch | Weights 🤗 |
 |------------|-------|-------------|-----------------|------------|
 | random     | GO    | 0.885       |      0.886      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13731645)       |
-| clustered  | GO    | Not Reported|      0.      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13703731)       |
+| clustered  | GO    | Not Reported|      0.784      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13703731)       |
 | random     | EC    | 0.977       |      0.979      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13685140)       |
 | clustered  | EC    | 0.914       |      0.914      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13704042)       |
 
