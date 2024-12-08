@@ -1,4 +1,5 @@
 # ProteInferTorch
+
 ## Description
 
 Unofficial PyTorch version of ProteInfer (https://github.com/google-research/proteinfer), originally implemented in TensorFlow 1.X. 
@@ -18,6 +19,22 @@ The table below summarizes ProteInferTorch's performance on the original ProteIn
 
 
 TODO: ProteInferTorch's performance when training from scratch (i.e., random weights)
+
+## Table Of Contents
+<!-- toc -->
+
+- [Installation](#installation)
+- [Config](#config)
+- [Data](#data)
+- [Inference](#inference)
+- [Extract Embeddings](#extract-embeddings)
+- [Train](#train)
+- [Citation](#citation)
+- [Additional scripts](#additional-scripts)
+  * [Create datasets](#create-datasets)
+  * [Extract TF weights](#extract-tf-weights)
+
+<!-- tocstop -->
 
 ## Installation
 ```
