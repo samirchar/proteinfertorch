@@ -4,7 +4,7 @@ import sys
 root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Construct the path to the proteinfer directory
 proteinfer_dir = os.path.join(root_dir, 'proteinfer')
-sys.path.append(proteinfer_dir)
+sys.path.insert(0,proteinfer_dir) # Inserting path at the top to avoid conflict with inference.py in proteinertorch/bin
 from proteinfer import inference
 import argparse
 import tensorflow as tf

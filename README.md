@@ -1,9 +1,81 @@
-Unofficial PyTorch version of ProteInfer, originally implemented in TensorFlow 1.X and converted for PyTorch compatibility.
+# ProteInferTorch
+## Description
+
+Unofficial PyTorch version of ProteInfer (https://github.com/google-research/proteinfer), originally implemented in TensorFlow 1.X. 
+
+ProteInfer is a model for protein function prediction that is trained to predict the functional properties of protein sequences using Deep Learning. Authors provide pre-trained models for two tasks: Gene Ontology (GO) and Enzyme Commission (EC) number prediction, as well as two data splits two data splits: random and clustered. Additionally, for every task and data split combination, authors trained multiple models using different random seeds. 
+
+This repo contains PyTorch code to run inference, train, or extract embeddings for four ProteInfer models - one for each task/data split combination. All model weights are hosted in [Hugging Face 🤗](https://huggingface.co/samirchar).
+
+The table below summarizes ProteInferTorch's performance on the original ProteInfer test sets using the Pytorch converted weights:
+
+| Data Split | Task  | ProteInfer  | ProteInferTorch | Weights 🤗 |
+|------------|-------|-------------|-----------------|------------|
+| random     | GO    | 0.885       |      0.886      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13731645)       |
+| clustered  | GO    | Not Reported|      0.      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13703731)       |
+| random     | EC    | 0.977       |      0.979      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13685140)       |
+| clustered  | EC    | 0.914       |      0.914      |  [Link](https://huggingface.co/samirchar/proteinfertorch-go-random-13704042)       |
 
 
+TODO: ProteInferTorch's performance when training from scratch (i.e., random weights)
 
+## Installation
+```
+git clone https://github.com/samirchar/proteinfertorch
+cd proteinfertorch
+conda env create -f environment.yml
+conda activate proteinfertorch
+pip install -e ./  # make sure ./ is the dir including setup.py
+```
 
-To transform ProteInfer original tfrecords dataset into Fasta's, run the following command:
+## Config
+All default hyperparameters and default arugments for the scripts are stored in `config/config.yaml`. 
+
+## Data
+
+All tge data to train and run inference with ProteInferTorch is available in the data.zip file (XXGB) hosted in Zenodo using the following command *from the ProteInferTorch root folder*
+
+```
+sudo apt-get install unzip
+curl -O https://zenodo.org/records/13897920/files/data.zip?download=1
+unzip data.zip
+```
+
+The data folder has the following structure:
+* **data/**
+    * **random_split/**: contains the train, dev, test fasta files for all tasks using the random split method
+    * **clustered_split/**: contains the train, dev, test fasta files for all tasks using the clustered split method
+    * **parenthood/**: holds a JSON with the EC and GO graphs, used by ProteInfer to normalize output probabilities.
+
+## Inference
+To run inference simply run:
+
+```
+python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
+```
+
+## Extract Embeddings
+Users can extract and save ProteInferTorch embeddings using the get_embeddings.py script. The embeddings will be stored in one or more .pt files depending on the number of --num-embedding-partitions
+
+```
+python bin/get_embeddings.py --data-path data/random_split/test_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 --num-embedding-partitions 10
+```
+
+## Train
+The model can be trained from scratch or from pretrained weights depending on the value of the --weights-dir argument.
+
+To train from scratch run:
+```
+python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta
+```
+
+To start from pretrained weights:
+```
+python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 
+```
+
+## Additional scripts
+This section 
 
 ```
 conda env create -f proteinfer_conda_requirements.yml
@@ -12,4 +84,13 @@ python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotat
 python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types EC
 python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types GO
 python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types EC
+```
+
+Download all tensorflow weights for all tasks and splits (WARNING: There are close to 100 different weights):
+
+```
+python bin/download_proteinfer_weights.py --task go --data-split clustered --ids all --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task go --data-split random --ids all --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task ec --data-split clustered --ids all --output-dir data/model_weights/tf_weights/
+python bin/download_proteinfer_weights.py --task ec --data-split random --ids all --output-dir data/model_weights/tf_weights/
 ```

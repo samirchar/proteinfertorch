@@ -1,11 +1,11 @@
 from proteinfertorch.proteinfer import ProteInfer
-from proteinfertorch.utils import read_yaml
+from proteinfertorch.utils import read_yaml, HF_MODEL_CARD_TEMPLATE
 from proteinfertorch.config import ACTIVATION_MAP
 import re
 import os
 import argparse
 from dotenv import load_dotenv
-from huggingface_hub import login
+from huggingface_hub import login, ModelCard
 '''
 
 This script converts the weights of a ProteInfer model from TensorFlow to PyTorch, and optionally pushes the models to the Huggingface Hub.
@@ -96,9 +96,20 @@ for model_weight in model_weights:
         model.save_pretrained(os.path.join(args.output_dir,f"{model_name}")) 
         
         if args.push_to_hub:
+            card = ModelCard(
+                HF_MODEL_CARD_TEMPLATE.format(
+                    model_name=model_name.upper(),
+                    task=task.upper(),
+                    data_split=data_split.upper(),
+                    model_id=model_id
+                )
+            )
             model.push_to_hub(
                 repo_id = f"{args.hf_username}/proteinfertorch-{model_name}",
                 private=True
+            )
+            card.push_to_hub(
+                repo_id = f"{args.hf_username}/proteinfertorch-{model_name}"
             )
 
 

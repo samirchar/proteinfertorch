@@ -1,0 +1,10 @@
+cff-version: 1
+message: "If you use this model, I would greatly appreciate it if you could cite it as follows:"
+authors:
+  - family-names: "Char"
+    given-names: "Samir"
+title: "Unofficial PyTorch Reimplementation of ProteInfer"
+version: "v1.0.0"
+doi: "10.5281/zenodo.1234567" 
+url: "https://github.com/samirchar/proteinfertorch"
+date-released: "2024-12-15"

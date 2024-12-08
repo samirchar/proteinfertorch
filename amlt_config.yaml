@@ -3,7 +3,7 @@ description: testing
 
 target:
   service: sing
-  name: msrresrchlab
+  name: msrresrchlab #msrresrchvc #msrresrchlab
   workspace_name: bio0-ext
 environment:
   image: torch2.5.1cuda12.4:v2.0
@@ -19,7 +19,7 @@ data:
 # SKU usage: G1 (single GPU), G4 (quad GPU), G4-V100 (1 machine, 4 V100 gpus), etc...
 jobs:
 - name: 'proteinfertorch_test' 
-  sku: G8-V100
+  sku: G8-V100 #80G4-A100-NvLink #G8-V100
   priority: high
   preemptible: False
   command:
@@ -31,6 +31,8 @@ jobs:
     --threshold 0.5
     --use-wandb
     --name go-random
+    --nodes 1
+    --gpus 8
   submit_args:
     env:
       WANDB_BASE_URL: "https://microsoft-research.wandb.io"

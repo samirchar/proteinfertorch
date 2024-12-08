@@ -31,3 +31,7 @@ echo "Pushing the image to Azure Container Registry (ACR)..."
 docker push $registry_name.azurecr.io/$repository_name:$image_tag
 
 echo "Image successfully pushed to ACR: $registry_name.azurecr.io/$repository_name:$image_tag"
+
+
+
+
