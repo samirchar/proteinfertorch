@@ -1,4 +1,4 @@
-name: proteinfertorch_310
+name: proteinfertorch
 channels:
   - biobuilds
   - bioconda
@@ -9,19 +9,19 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10.15
+  - python=3.12.4
   - pytorch=2.5.1
   - pip=24.2
-  - pandas=2.2.3
-  - wandb=0.16.6 # for logging
+  - pandas=1.5.2
+  - wandb=0.18.7 # for logging
   - tqdm=4.66.5
   - pytables=3.10.1 # for hdf5
-  - huggingface_hub=0.26.3 # for hf integration
+  - huggingface_hub=0.26.2 # for hf integration
   - transformers=4.45.2 # for hf integration
-  - python-dotenv=0.21.0 # for env vars
-  - matplotlib=3.9.2 # for plotting
+  - python-dotenv=1.0.1 # for env vars
+  - matplotlib=3.9.1 # for plotting
   - pip:
     - torcheval==0.0.7 # for evaluation
     - ipykernel==6.29.5 # for jupyter
 
-prefix: /anaconda/envs/proteinfertorch_310
+prefix: /anaconda/envs/proteinfertorch

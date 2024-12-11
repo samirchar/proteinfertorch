@@ -65,11 +65,15 @@ The data folder has the following structure:
     * **parenthood/**: holds a JSON with the EC and GO graphs, used by ProteInfer to normalize output probabilities.
 
 ## Inference
-To run inference simply run:
+To run inference simply run and evaluate model performance run:
 
 ```
 python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
 ```
+
+<!-- TODO: add arguments explanations -->
+
+
 
 ## Extract Embeddings
 Users can extract and save ProteInferTorch embeddings using the get_embeddings.py script. The embeddings will be stored in one or more .pt files depending on the number of --num-embedding-partitions
@@ -99,7 +103,6 @@ If you use this model in your work, I would greatly appreciate it if you could c
 @misc{yourname2024pytorchmodel,
   title={ProteInferTorch: a PyTorch implementation of ProteInfer},
   version={v1.0.0},
-
   author={Samir Char},
   year={2024},
   month={12},
