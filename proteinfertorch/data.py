@@ -127,9 +127,12 @@ class ProteinDataset(Dataset):
         sequence_onehots = torch.nn.functional.one_hot(
             amino_acid_ints, num_classes=len(self.amino_acid_vocabulary)
         ).permute(1, 0)
-        label_multihots = torch.nn.functional.one_hot(
-            labels_ints, num_classes=len(self.label_vocabulary)
-        ).sum(dim=0)
+        if len(labels_ints) > 0:
+            label_multihots = torch.nn.functional.one_hot(
+                labels_ints, num_classes=len(self.label_vocabulary)
+            ).sum(dim=0)
+        else:
+            label_multihots = torch.tensor([])
 
         # Return a dict containing the processed example
         # NOTE: In the collator, we will use the label token counts for only the first sequence in the batch
