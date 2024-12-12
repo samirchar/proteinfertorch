@@ -46,6 +46,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--fasta-separator",
+    type=str,
+    default=config["data"]["fasta_separator"],
+    help="The separator of the header (A.K.A. description or labels) in the FASTA file."
+)
+
+
+parser.add_argument(
     "--weights-dir",
     type=str,
     required=True,

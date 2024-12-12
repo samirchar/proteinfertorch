@@ -33,6 +33,9 @@ class ProteinDataset(Dataset):
         vocabulary_path: Optional[str] = None,
         deduplicate:bool = False,
         max_sequence_length:int = float("inf"),
+        fasta_separator: str = " ",
+        fasta_no_labels_token: str = "<NO_LABELS>",
+        ignore_labels: bool = False,
         logger=None
         ):
         """
@@ -43,8 +46,15 @@ class ProteinDataset(Dataset):
         self.vocabulary_path = vocabulary_path
         self.deduplicate = deduplicate
         self.max_sequence_length = max_sequence_length
-        
-        self.data = read_fasta(data_path)
+        self.fasta_separator = fasta_separator
+        self.fasta_no_labels_token = fasta_no_labels_token
+        self.ignore_labels = ignore_labels
+
+
+        self.data = read_fasta(data_path = data_path,
+                               ignore_labels=self.ignore_labels,
+                               no_label_token=self.fasta_no_labels_token,
+                               sep=self.fasta_separator)
 
         self.vocabulary_path = (
             self.vocabulary_path
@@ -79,6 +89,7 @@ class ProteinDataset(Dataset):
 
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
+        self.has_labels = self.label_vocabulary != set([self.fasta_no_labels_token])
         self.sequence_id_vocabulary = vocabularies["sequence_id_vocab"]
         self._process_vocab()
 

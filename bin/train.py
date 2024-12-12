@@ -83,6 +83,14 @@ def main():
         required=False,
         help="Path to the test data fasta file."
     )
+
+    parser.add_argument(
+        "--fasta-separator",
+        type=str,
+        default=config["data"]["fasta_separator"],
+        help="The separator of the header (A.K.A. description or labels) in the FASTA file."
+    )
+
     parser.add_argument(
         "--vocabulary-path",
         type=str,
@@ -524,6 +532,7 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
 
@@ -532,6 +541,7 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
 
@@ -540,8 +550,12 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
+
+    # Assert dataset has labels
+    assert train_dataset.has_labels & test_dataset.has_labels & validation_dataset.has_labels, "All datasets must have labels for training"
 
     num_labels = len(train_dataset.label_vocabulary)
 

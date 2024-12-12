@@ -30,6 +30,7 @@ inference:
 data:
   deduplicate: false
   max_sequence_length: 10000
+  fasta_separator: " " # specify the separator of the header (A.K.A. description or labels) in the FASTA file.
  
 
 logging:

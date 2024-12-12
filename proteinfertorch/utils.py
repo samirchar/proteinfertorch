@@ -178,24 +178,36 @@ def read_pickle(file_path: str):
         item = pickle.load(p)
     return item
 
-
-def read_fasta(data_path: str, sep=" "):
+def read_fasta(data_path: str,
+               sep: str =" ",
+               ignore_labels = False,
+               no_label_token: str = "<NO_LABEL>"
+               ):
     """
     Reads a FASTA file and returns a list of tuples containing sequences, ids, and labels.
     """
-    sequences_with_ids_and_labels = []
 
+    sequences_with_ids_and_labels = []
     for record in SeqIO.parse(data_path, "fasta"):
         sequence = str(record.seq)
-        components = record.description.split(sep)
-        # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
-        sequence_id = components[0]
-        labels = components[1:]
+        sequence_id = record.id
+
+
+        # always return dummy labels unless we are not ignoring the labels and the labels are present
+        labels = [no_label_token]
+        
+        if not ignore_labels:
+            # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
+            temp = record.description.split(sep)[1:]
+            has_labels = len(temp) > 1
+
+            if has_labels:
+                labels = temp
 
         # Return a tuple of sequence, sequence_id, and labels
         sequences_with_ids_and_labels.append((sequence, sequence_id, labels))
-    return sequences_with_ids_and_labels
 
+    return sequences_with_ids_and_labels
 
 
 def save_to_pickle(item, file_path: str):

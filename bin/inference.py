@@ -53,6 +53,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--fasta-separator",
+    type=str,
+    default=config["data"]["fasta_separator"],
+    help="The separator of the header (A.K.A. description or labels) in the FASTA file."
+)
+
+parser.add_argument(
     "--vocabulary-path",
     type=str,
     required=True,
@@ -158,6 +165,7 @@ test_dataset = ProteinDataset(
         vocabulary_path = args.vocabulary_path,
         deduplicate = args.deduplicate,
         max_sequence_length = args.max_sequence_length,
+        fasta_separator = args.fasta_separator,
         logger=None
         )
 
