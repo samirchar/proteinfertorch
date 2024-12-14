@@ -1,3 +1,4 @@
+from proteinfertorch import CONFIG_FILE
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_yaml, to_device
@@ -22,18 +23,15 @@ logger = get_logger()
 # Arguments that must be parsed first
 parser_first = argparse.ArgumentParser(add_help=False)
 
-parser_first.add_argument('--config-dir',
+parser_first.add_argument('--config-path',
                     type=str,
-                    default="config",
-                    help="Path to the configuration directory (default: config)")
-
+                    default=CONFIG_FILE,
+                    required=False,
+                    help="Path to the configuration yaml path (default: config/config.yaml)")
 
 initial_args, _ = parser_first.parse_known_args()
 
-config = read_yaml(
-    os.path.join(initial_args.config_dir, "config.yaml")
-)
-
+config = read_yaml(initial_args.config_path)
 
 # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
@@ -49,7 +47,7 @@ parser.add_argument(
     "--fasta-separator",
     type=str,
     default=config["data"]["fasta_separator"],
-    help="The separator of the header (A.K.A. description or labels) in the FASTA file."
+    help="The separator of the header (A.K.A. description or labels) in the FASTA file. If no headers"
 )
 
 

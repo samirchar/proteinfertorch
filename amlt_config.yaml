@@ -6,7 +6,7 @@ target:
   name: msrresrchlab #msrresrchvc #msrresrchlab
   workspace_name: bio0-ext
 environment:
-  image: torch2.5.1cuda12.4:v3.0
+  image: torch2.4.0cuda12.4:v1.0 # torch2.5.1cuda12.4:v1.0
   registry: bio0extcr.azurecr.io
 
 code:
