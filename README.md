@@ -122,10 +122,10 @@ The following code create train, dev and test FASTA files for both tasks and dat
 ```
 conda env create -f proteinfer_conda_requirements.yml
 conda activate proteinfer
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types EC
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --vocab-dir data/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --vocab-dir data/vocabularies/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --vocab-dir data/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --vocab-dir data/vocabularies/ --annotation-types EC
 conda activate proteinfertorch
 ```
 

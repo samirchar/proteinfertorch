@@ -554,7 +554,7 @@ def train(gpu,args):
             )
 
     # Assert dataset has labels
-    assert train_dataset.has_labels & test_dataset.has_labels & validation_dataset.has_labels, "All datasets must have labels for training"
+    assert train_dataset.dataset_has_labels & test_dataset.dataset_has_labels & validation_dataset.dataset_has_labels, "All datasets must have labels for training"
 
     num_labels = len(train_dataset.label_vocabulary)
 

@@ -3,7 +3,7 @@ set -e # ensure to exit on error
 
 # Set your variables here
 registry_name="bio0extcr"
-repository_name="torch2.5.0cuda12.4" # "torch2.5.1cuda12.4"
+repository_name="torch2.5.1cuda12.4"
 image_tag="v1.0"  # Change this tag as needed
 
 #AZ acr login

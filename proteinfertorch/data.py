@@ -50,19 +50,25 @@ class ProteinDataset(Dataset):
         self.fasta_no_labels_token = fasta_no_labels_token
         self.ignore_labels = ignore_labels
 
-
-        self.data = read_fasta(data_path = data_path,
+        # Load the data
+        self.data,self.dataset_has_labels = read_fasta(data_path = data_path,
                                ignore_labels=self.ignore_labels,
                                no_label_token=self.fasta_no_labels_token,
                                sep=self.fasta_separator)
-
-        self.vocabulary_path = (
-            self.vocabulary_path
-            if self.vocabulary_path is not None
-            else self.data_path
-        )
+        
+        # Vocabulary can be inferred from the main dataset, or from a separate dataset from vocabulary_path
+        # This is important because since some labels are so rare, they may not be present in the main dataset.
+        # If the
+        if (self.vocabulary_path is not None) & (self.dataset_has_labels):
+            data_for_vocabulary, _  = read_fasta(data_path = self.vocabulary_path,
+                        ignore_labels=self.ignore_labels,
+                        no_label_token=self.fasta_no_labels_token,
+                        sep=self.fasta_separator)
+        else:
+            data_for_vocabulary =  self.data
+        
         self._preprocess_data(
-            vocabulary_path=self.vocabulary_path,
+            data_for_vocabulary=data_for_vocabulary
         )
     def _clean_data(self):
         """
@@ -81,15 +87,14 @@ class ProteinDataset(Dataset):
         self.data = clean_data
         del clean_data
 
-    def _preprocess_data(self, vocabulary_path: str):
+    def _preprocess_data(self, data_for_vocabulary:list):
 
         self._clean_data()
 
-        vocabularies = generate_vocabularies(file_path=vocabulary_path)
+        vocabularies = generate_vocabularies(data=data_for_vocabulary)
 
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
-        self.has_labels = self.label_vocabulary != set([self.fasta_no_labels_token])
         self.sequence_id_vocabulary = vocabularies["sequence_id_vocab"]
         self._process_vocab()
 

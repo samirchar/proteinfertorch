@@ -5,7 +5,30 @@ import argparse
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio import SeqIO
+import json
 from tqdm import tqdm
+
+def generate_vocabularies(data: list = None) -> dict:
+    """
+    Generate vocabularies based on the parsed fasta file using read_fasta.
+    path must be .fasta file
+    """
+
+    vocabs = {
+        "amino_acid_vocab": set(),
+        "label_vocab": set(),
+        "sequence_id_vocab": set(),
+    }
+
+    for sequence, sequence_id, labels in data:
+        vocabs["sequence_id_vocab"].add(sequence_id)
+        vocabs["label_vocab"].update(labels)
+        vocabs["amino_acid_vocab"].update(list(sequence))
+
+    for vocab_type in vocabs.keys():
+        vocabs[vocab_type] = sorted(list(vocabs[vocab_type]))
+
+    return vocabs
 
 def process_sequence_tfrecord(record: dict, annotation_types: list):
     sequence = record["sequence"][0].decode()
@@ -34,6 +57,7 @@ def process_sequence_tfrecord(record: dict, annotation_types: list):
 
 def process_tfrecords(
     data_dir: str,
+    vocab_dir: str,
     annotation_types: list,
     pattern: str,
     pattern_name: str,
@@ -57,6 +81,12 @@ def process_tfrecords(
         description = " ".join(labels)
         record = SeqRecord(Seq(sequence), id=f"{id}", description=description)
         records.append(record)
+
+    vocabulary = generate_vocabularies(data = records)
+
+    os.makedirs(vocab_dir, exist_ok=True)
+    with open(os.path.join(vocab_dir, f"{pattern_name}_{'_'.join(annotation_types)}.json"), "w") as file:
+        json.dump(vocabulary, file)
 
     with open(
         os.path.join(data_dir , f"{pattern_name}_{'_'.join(annotation_types)}.fasta"),
@@ -82,6 +112,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--vocab-dir",
+        required=True,
+        help="Path to the directory to save the vocabulary"
+    )
+
+    parser.add_argument(
         "--annotation-types",
         nargs="+",
         required=True
@@ -102,6 +138,7 @@ if __name__ == "__main__":
         logging.info(f"Processing {pattern_name}")
         process_tfrecords(
             data_dir=args.data_dir,
+            vocab_dir=args.vocab_dir,
             annotation_types=args.annotation_types,
             pattern=pattern,
             pattern_name=pattern_name,
