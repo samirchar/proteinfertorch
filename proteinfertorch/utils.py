@@ -246,6 +246,27 @@ def get_vocab_mappings(vocabulary):
     int2term = {idx: term for term, idx in term2int.items()}
     return term2int, int2term
 
+def generate_vocabularies(data: list = None) -> dict:
+    """
+    Generate vocabularies based on the parsed fasta file using read_fasta.
+    path must be .fasta file
+    """
+
+    vocabs = {
+        "amino_acid_vocab": set(),
+        "label_vocab": set(),
+        "sequence_id_vocab": set(),
+    }
+
+    for sequence, sequence_id, labels in data:
+        vocabs["sequence_id_vocab"].add(sequence_id)
+        vocabs["label_vocab"].update(labels)
+        vocabs["amino_acid_vocab"].update(list(sequence))
+
+    for vocab_type in vocabs.keys():
+        vocabs[vocab_type] = sorted(list(vocabs[vocab_type]))
+
+    return vocabs
 
 def transfer_tf_weights_to_torch(torch_model: torch.nn.Module, tf_weights_path: str):
     # Load tensorflow variables. Remove global step variable and add it as num_batches variable for each batchnorm

@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from proteinfertorch.collators import collate_variable_sequence_length
-from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies
+from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies,read_json
 from itertools import product
 import numpy as np
 from torch.utils.data import RandomSampler
@@ -51,25 +51,21 @@ class ProteinDataset(Dataset):
         self.ignore_labels = ignore_labels
 
         # Load the data
-        self.data,self.dataset_has_labels = read_fasta(data_path = data_path,
+        self.data,self.has_labels = read_fasta(
+                               data_path = data_path,
                                ignore_labels=self.ignore_labels,
                                no_label_token=self.fasta_no_labels_token,
                                sep=self.fasta_separator)
-        
-        # Vocabulary can be inferred from the main dataset, or from a separate dataset from vocabulary_path
-        # This is important because since some labels are so rare, they may not be present in the main dataset.
-        # If the
-        if (self.vocabulary_path is not None) & (self.dataset_has_labels):
-            data_for_vocabulary, _  = read_fasta(data_path = self.vocabulary_path,
-                        ignore_labels=self.ignore_labels,
-                        no_label_token=self.fasta_no_labels_token,
-                        sep=self.fasta_separator)
-        else:
-            data_for_vocabulary =  self.data
-        
+                
         self._preprocess_data(
-            data_for_vocabulary=data_for_vocabulary
+            vocabulary_path=vocabulary_path
         )
+
+    def _preprocess_data(self, vocabulary_path:str):
+        self._clean_data()
+        self._parse_vocabulary(vocabulary_path = vocabulary_path)
+        self._process_vocab()
+
     def _clean_data(self):
         """
         Remove sequences that are too long or duplicated
@@ -87,16 +83,15 @@ class ProteinDataset(Dataset):
         self.data = clean_data
         del clean_data
 
-    def _preprocess_data(self, data_for_vocabulary:list):
-
-        self._clean_data()
-
-        vocabularies = generate_vocabularies(data=data_for_vocabulary)
-
+    def _parse_vocabulary(self, vocabulary_path: str):
+        if vocabulary_path is not None:
+            vocabularies = read_json(vocabulary_path)
+        else:
+            vocabularies = generate_vocabularies(data=self.data)
+                
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
         self.sequence_id_vocabulary = vocabularies["sequence_id_vocab"]
-        self._process_vocab()
 
     # Helper functions for processing and loading vocabularies
     def _process_vocab(self):

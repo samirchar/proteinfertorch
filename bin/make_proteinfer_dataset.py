@@ -56,18 +56,24 @@ def process_sequence_tfrecord(record: dict, annotation_types: list):
 
 
 def process_tfrecords(
-    data_dir: str,
-    vocab_dir: str,
+    data_input_dir: str,
+    data_output_dir: str,
+    vocab_output_dir: str,
     annotation_types: list,
     pattern: str,
     pattern_name: str,
 ):
     # Load all tfrecords from desired data split
-    datapipe1 = FileLister(str(data_dir), pattern)
+    datapipe1 = FileLister(str(data_input_dir), pattern)
     datapipe2 = FileOpener(datapipe1, mode="b")
     tfrecord_loader_dp = datapipe2.load_from_tfrecord()
 
+    # Create paths
+    data_output_path = os.path.join(data_output_dir , f"{pattern_name}_{'_'.join(annotation_types)}.fasta")
+    vocab_output_path = os.path.join(vocab_output_dir, f"{pattern_name}_{'_'.join(annotation_types)}.json")
+
     records = []
+    records_raw = []
     # Iterate over records, process and write to a fasta file
     for _, record in tqdm(enumerate(tfrecord_loader_dp)):
         processed_sequence = process_sequence_tfrecord(record, annotation_types)
@@ -81,23 +87,24 @@ def process_tfrecords(
         description = " ".join(labels)
         record = SeqRecord(Seq(sequence), id=f"{id}", description=description)
         records.append(record)
-
-    vocabulary = generate_vocabularies(data = records)
-
-    os.makedirs(vocab_dir, exist_ok=True)
-    with open(os.path.join(vocab_dir, f"{pattern_name}_{'_'.join(annotation_types)}.json"), "w") as file:
-        json.dump(vocabulary, file)
+        records_raw.append((sequence, id, labels))
 
     with open(
-        os.path.join(data_dir , f"{pattern_name}_{'_'.join(annotation_types)}.fasta"),
+        data_output_path,
         "w",
     ) as output_handle:
         SeqIO.write(records, output_handle, "fasta")
 
+    if pattern_name == "full":
+        vocabulary = generate_vocabularies(data = records_raw)
+
+        os.makedirs(vocab_output_dir, exist_ok=True)
+        with open(vocab_output_path, "w") as file:
+            json.dump(vocabulary, file)
 
 if __name__ == "__main__":
     """
-    Example usage: python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types GO
+    Example usage: python bin/make_proteinfer_dataset.py --data-input-dir data/clustered_split/ --annotation-types GO
     """
     logging.basicConfig(
         format="%(asctime)s | %(levelname)s: %(message)s", level=logging.NOTSET
@@ -106,13 +113,19 @@ if __name__ == "__main__":
 
     
     parser.add_argument(
-        "--data-dir",
+        "--data-input-dir",
         required=True,
         help="Path to the directory containing the tfrecords. For proteinfer = random_split or clustered_split"
     )
 
     parser.add_argument(
-        "--vocab-dir",
+        "--data-output-dir",
+        required=True,
+        help="Path to the directory to save the processed data"
+    )
+
+    parser.add_argument(
+        "--vocab-output-dir",
         required=True,
         help="Path to the directory to save the vocabulary"
     )
@@ -137,8 +150,9 @@ if __name__ == "__main__":
     for pattern_name, pattern in patterns.items():
         logging.info(f"Processing {pattern_name}")
         process_tfrecords(
-            data_dir=args.data_dir,
-            vocab_dir=args.vocab_dir,
+            data_input_dir=args.data_input_dir,
+            data_output_dir=args.data_output_dir,
+            vocab_output_dir=args.vocab_output_dir,
             annotation_types=args.annotation_types,
             pattern=pattern,
             pattern_name=pattern_name,

@@ -168,7 +168,7 @@ test_dataset = ProteinDataset(
         logger=None
         )
 
-if test_dataset.dataset_has_labels:
+if test_dataset.has_labels:
     logger.info(f"Dataset includes ground truth labels, will use them for evaluation")
 else:
     logger.info(f"Dataset does not include ground truth labels, will only output predictions")
@@ -242,7 +242,7 @@ for loader_name, loader in loaders.items():
                     device=device,
                 )
 
-            if test_dataset.dataset_has_labels:
+            if test_dataset.has_labels:
                 metrics["map_micro"].update(probabilities.cpu().flatten(), label_multihots.cpu().flatten())
                 metrics["map_macro"].update(probabilities.cpu(), label_multihots.cpu())
                 metrics["f1_micro"].update(probabilities.flatten(), label_multihots.flatten())
@@ -253,10 +253,10 @@ for loader_name, loader in loaders.items():
                 test_results["logits"].append(logits.cpu())
                 test_results["probabilities"].append(probabilities.cpu())
 
-                if test_dataset.dataset_has_labels:
+                if test_dataset.has_labels:
                     test_results["labels"].append(label_multihots.cpu())
 
-        if test_dataset.dataset_has_labels:
+        if test_dataset.has_labels:
             final_metrics = sync_and_compute_collection(metrics)
             #Convert items in final_metrics to scalars if they are tensors and log metrics
             final_metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in final_metrics.items()}

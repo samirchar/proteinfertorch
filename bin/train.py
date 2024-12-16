@@ -33,10 +33,10 @@ from proteinfertorch.schedulers import ExponentialDecay
 example usage: 
 
 From HF weights pretrained:
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir <username>/proteinfertorch-go-random-13731645 --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir <username>/proteinfertorch-go-random-13731645 --map-bins 50 --use-wandb
 
 From random weights with possibly custom architecture: #TODO: modify code to allow for custom architecture
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --map-bins 50 --use-wandb
 
 """
 
@@ -95,8 +95,8 @@ def main():
         type=str,
         required=False,
         default=None,
-        help="Path to the vocabulary file"
-    ) #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
+        help="Path to the vocabulary JSON file"
+    ) 
 
     parser.add_argument(
         "--weights-dir",
@@ -554,7 +554,7 @@ def train(gpu,args):
             )
 
     # Assert dataset has labels
-    assert train_dataset.dataset_has_labels & test_dataset.dataset_has_labels & validation_dataset.dataset_has_labels, "All datasets must have labels for training"
+    assert train_dataset.has_labels & test_dataset.has_labels & validation_dataset.has_labels, "All datasets must have labels for training"
 
     num_labels = len(train_dataset.label_vocabulary)
 

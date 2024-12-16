@@ -68,7 +68,7 @@ The data folder has the following structure:
 To run inference simply run and evaluate model performance run:
 
 ```
-python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
+python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir samirchar/proteinfertorch-go-random-13731645
 ```
 
 <!-- TODO: add arguments explanations -->
@@ -87,7 +87,7 @@ The model can be trained from scratch or from pretrained weights depending on th
 
 To train from scratch run:
 ```
-python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta
+python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json
 ```
 
 To start from pretrained weights:
@@ -122,10 +122,10 @@ The following code create train, dev and test FASTA files for both tasks and dat
 ```
 conda env create -f proteinfer_conda_requirements.yml
 conda activate proteinfer
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --vocab-dir data/vocabularies/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --vocab-dir data/vocabularies/ --annotation-types EC
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --vocab-dir data/vocabularies/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --vocab-dir data/vocabularies/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-input-dir data/clustered_split/tfrecords/ --data-output-dir data/clustered_split/ --vocab-output-dir data/clustered_split/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-input-dir data/clustered_split/tfrecords/ --data-output-dir data/clustered_split/ --vocab-output-dir data/clustered_split/vocabularies/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-input-dir data/random_split/tfrecords/ --data-output-dir data/random_split/ --vocab-output-dir data/random_split/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-input-dir data/random_split/tfrecords/ --data-output-dir data/random_split/ --vocab-output-dir data/random_split/vocabularies/ --annotation-types EC
 conda activate proteinfertorch
 ```
 
