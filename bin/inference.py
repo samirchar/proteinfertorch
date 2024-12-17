@@ -211,7 +211,7 @@ for loader_name, loader in loaders.items():
     prob_norm = probability_normalizer(
                         label_vocab=loader.dataset.label_vocabulary,
                         applicable_label_dict = label_normalizer,
-                        )
+                        ) if args.parenthood_path is not None else None
     
     with torch.no_grad(), torch.amp.autocast(enabled=True,device_type=device.type): 
         for batch_idx, batch in tqdm(enumerate(loader), total=len(loader)):
