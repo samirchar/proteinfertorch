@@ -52,11 +52,11 @@ All default hyperparameters and default arugments for the scripts are stored in 
 
 ## Data
 
-All tge data to train and run inference with ProteInferTorch is available in the data.zip file (XXGB) hosted in Zenodo using the following command *from the ProteInferTorch root folder*
+All tge data to train and run inference with ProteInferTorch is available in the data.zip file (945 MB) hosted in Zenodo using the following command *from the ProteInferTorch root folder*
 
 ```
 sudo apt-get install unzip
-curl -O https://zenodo.org/records/13897920/files/data.zip?download=1
+curl -O https://zenodo.org/records/14514368/files/data.zip?download=1
 unzip data.zip
 ```
 
@@ -114,7 +114,7 @@ If you use this model in your work, I would greatly appreciate it if you could c
   year={2024},
   month={12},
   day={08},
-  doi={10.5281/zenodo.1234567},
+  doi={10.5281/zenodo.14514368},
   url={https://github.com/samirchar/proteinfertorch}
 }
 ```
@@ -146,5 +146,3 @@ python bin/download_proteinfer_weights.py --task go --data-split random --ids 13
 python bin/download_proteinfer_weights.py --task ec --data-split clustered --ids 13704042 --output-dir data/model_weights/tf_weights/
 python bin/download_proteinfer_weights.py --task ec --data-split random --ids 13685140 --output-dir data/model_weights/tf_weights/
 ```
-
-
