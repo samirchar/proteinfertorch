@@ -178,24 +178,35 @@ def read_pickle(file_path: str):
         item = pickle.load(p)
     return item
 
-
-def read_fasta(data_path: str, sep=" "):
+def read_fasta(data_path: str,
+               sep: str =" ",
+               ignore_labels = False
+               ):
     """
     Reads a FASTA file and returns a list of tuples containing sequences, ids, and labels.
     """
-    sequences_with_ids_and_labels = []
 
+    sequences_with_ids_and_labels = []
     for record in SeqIO.parse(data_path, "fasta"):
         sequence = str(record.seq)
-        components = record.description.split(sep)
+        sequence_id = record.id
+
+
+        # always return dummy labels unless we are not ignoring the labels and the labels are present
+        labels = []
+        has_labels = False
+        
         # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
-        sequence_id = components[0]
-        labels = components[1:]
+        temp = record.description.split(sep)[1:] 
+        has_labels = len(temp) > 0
+
+        if has_labels and not ignore_labels:
+            labels = temp
 
         # Return a tuple of sequence, sequence_id, and labels
         sequences_with_ids_and_labels.append((sequence, sequence_id, labels))
-    return sequences_with_ids_and_labels
 
+    return sequences_with_ids_and_labels, has_labels
 
 
 def save_to_pickle(item, file_path: str):
@@ -233,26 +244,17 @@ def get_vocab_mappings(vocabulary):
     int2term = {idx: term for term, idx in term2int.items()}
     return term2int, int2term
 
-
-def generate_vocabularies(file_path: str = None, data: list = None) -> dict:
+def generate_vocabularies(data: list = None) -> dict:
     """
-    Generate vocabularies based on the provided data path.
+    Generate vocabularies based on the parsed fasta file using read_fasta.
     path must be .fasta file
     """
-    if not ((file_path is None) ^ (data is None)):
-        raise ValueError("Only one of file_path OR data must be passed, not both.")
+
     vocabs = {
         "amino_acid_vocab": set(),
         "label_vocab": set(),
         "sequence_id_vocab": set(),
     }
-    if file_path is not None:
-        if isinstance(file_path, str):
-            data = read_fasta(file_path)
-        else:
-            raise TypeError(
-                "File not supported, vocabularies can only be generated from .fasta files."
-            )
 
     for sequence, sequence_id, labels in data:
         vocabs["sequence_id_vocab"].add(sequence_id)
@@ -404,37 +406,39 @@ def save_evaluation_results(
 
     logits_df_cols = label_vocabulary
 
-
     #Saving the labels_df
-    labels_df = pd.DataFrame(
-        results["labels"], columns=label_vocabulary, index=results["sequence_ids"]
-    )
-    labels_df_output_path = os.path.join(
-        output_dir, f"{data_split_name}_labels_{run_name}.h5"
-    )
-    logger.info(f"saving results to {labels_df_output_path}")
-    labels_df.to_hdf(labels_df_output_path, key="labels_df", mode="w")
+    if 'labels' in results:
+        labels_df = pd.DataFrame(
+            results["labels"], columns=label_vocabulary, index=results["sequence_ids"]
+        )
+        labels_df_output_path = os.path.join(
+            output_dir, f"{data_split_name}_labels_{run_name}.h5"
+        )
+        logger.info(f"saving results to {labels_df_output_path}")
+        labels_df.to_hdf(labels_df_output_path, key="labels_df", mode="w")
 
     #saving the logits df
-    logits_df = pd.DataFrame(
-        results["logits"], columns=logits_df_cols, index=results["sequence_ids"]
-    )
-    logits_df_output_path = os.path.join(
-        output_dir, f"{data_split_name}_logits_{run_name}.h5"
-    )
-    logger.info(f"saving results to {logits_df_output_path}")
-    logits_df.to_hdf(logits_df_output_path, key="logits_df", mode="w")
+    if 'logits' in results:
+        logits_df = pd.DataFrame(
+            results["logits"], columns=logits_df_cols, index=results["sequence_ids"]
+        )
+        logits_df_output_path = os.path.join(
+            output_dir, f"{data_split_name}_logits_{run_name}.h5"
+        )
+        logger.info(f"saving results to {logits_df_output_path}")
+        logits_df.to_hdf(logits_df_output_path, key="logits_df", mode="w")
 
 
     #Saving the probabilities df
-    probabilities_df = pd.DataFrame(
-        results["probabilities"], columns=logits_df_cols, index=results["sequence_ids"]
-    )
-    probabilities_df_output_path = os.path.join(
-        output_dir, f"{data_split_name}_probabilities_{run_name}.h5"
-    )
-    logger.info(f"saving results to {probabilities_df_output_path}")
-    probabilities_df.to_hdf(probabilities_df_output_path, key="probabilities_df", mode="w")
+    if 'probabilities' in results:
+        probabilities_df = pd.DataFrame(
+            results["probabilities"], columns=logits_df_cols, index=results["sequence_ids"]
+        )
+        probabilities_df_output_path = os.path.join(
+            output_dir, f"{data_split_name}_probabilities_{run_name}.h5"
+        )
+        logger.info(f"saving results to {probabilities_df_output_path}")
+        probabilities_df.to_hdf(probabilities_df_output_path, key="probabilities_df", mode="w")
 
 
 def seed_everything(seed: int, device: str):

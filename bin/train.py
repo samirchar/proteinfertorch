@@ -3,6 +3,7 @@ from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_json, read_yaml, to_device, save_checkpoint
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
 from proteinfertorch.utils import save_evaluation_results, probability_normalizer, seed_everything, get_model
+from proteinfertorch import CONFIG_FILE
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -32,10 +33,10 @@ from proteinfertorch.schedulers import ExponentialDecay
 example usage: 
 
 From HF weights pretrained:
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir <username>/proteinfertorch-go-random-13731645 --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir <username>/proteinfertorch-go-random-13731645 --map-bins 50 --use-wandb
 
 From random weights with possibly custom architecture: #TODO: modify code to allow for custom architecture
-- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --map-bins 50 --use-wandb
+- python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --map-bins 50 --use-wandb
 
 """
 
@@ -44,19 +45,17 @@ def main():
     # Arguments that must be parsed first
     parser_first = argparse.ArgumentParser(add_help=False)
 
-    parser_first.add_argument('--config-dir',
+    parser_first.add_argument('--config-path',
                         type=str,
-                        default="config",
+                        default=CONFIG_FILE,
                         required=False,
-                        help="Path to the configuration directory (default: config)")
+                        help="Path to the configuration yaml path (default: config/config.yaml)")
 
 
 
     initial_args, _ = parser_first.parse_known_args()
 
-    config = read_yaml(
-        os.path.join(initial_args.config_dir, "config.yaml")
-    )
+    config = read_yaml(initial_args.config_path)
     
 
     # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
@@ -83,13 +82,21 @@ def main():
         required=False,
         help="Path to the test data fasta file."
     )
+
+    parser.add_argument(
+        "--fasta-separator",
+        type=str,
+        default=config["data"]["fasta_separator"],
+        help="The separator of the header (A.K.A. description or labels) in the FASTA file."
+    )
+
     parser.add_argument(
         "--vocabulary-path",
         type=str,
         required=False,
         default=None,
-        help="Path to the vocabulary file"
-    ) #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
+        help="Path to the vocabulary JSON file"
+    ) 
 
     parser.add_argument(
         "--weights-dir",
@@ -524,6 +531,7 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
 
@@ -532,6 +540,7 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
 
@@ -540,8 +549,12 @@ def train(gpu,args):
             vocabulary_path = args.vocabulary_path,
             deduplicate = args.deduplicate,
             max_sequence_length = args.max_sequence_length,
+            fasta_separator = args.fasta_separator,
             logger=None
             )
+
+    # Assert dataset has labels
+    assert train_dataset.has_labels & test_dataset.has_labels & validation_dataset.has_labels, "All datasets must have labels for training"
 
     num_labels = len(train_dataset.label_vocabulary)
 

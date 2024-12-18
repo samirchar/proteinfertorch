@@ -64,30 +64,33 @@ The data folder has the following structure:
     * **clustered_split/**: contains the train, dev, test fasta files for all tasks using the clustered split method
     * **parenthood/**: holds a JSON with the EC and GO graphs, used by ProteInfer to normalize output probabilities.
 
+## Input data format
+This package uses the standard [FASTA](https://en.wikipedia.org/wiki/FASTA_format) format, which is a standard in bioinformatics. All scripts have an optional arugment called --fasta-separator that defaults to " " and represents how elements of header (i.e., sequence id and labels, if any) are separated.
+
 ## Inference
 To run inference simply run and evaluate model performance run:
 
 ```
-python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
+python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir samirchar/proteinfertorch-go-random-13731645
 ```
 
-<!-- TODO: add arguments explanations -->
-
+To save the prediction logits, probabilities and labels, add the flag --save-prediction-results
 
 
 ## Extract Embeddings
-Users can extract and save ProteInferTorch embeddings using the get_embeddings.py script. The embeddings will be stored in one or more .pt files depending on the number of --num-embedding-partitions
+Users can extract and save ProteInferTorch embeddings using the get_embeddings.py script. The embeddings will be stored in one or more .pt files inside of --output-dir, depending on the number of --num-embedding-partitions specified.
 
 ```
-python bin/get_embeddings.py --data-path data/random_split/test_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 --num-embedding-partitions 10
+python bin/get_embeddings.py --data-path data/random_split/test_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
 ```
+By default, --num-embedding-partitions=10.
 
 ## Train
 The model can be trained from scratch or from pretrained weights depending on the value of the --weights-dir argument.
 
 To train from scratch run:
 ```
-python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta
+python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json
 ```
 
 To start from pretrained weights:
@@ -122,10 +125,10 @@ The following code create train, dev and test FASTA files for both tasks and dat
 ```
 conda env create -f proteinfer_conda_requirements.yml
 conda activate proteinfer
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/clustered_split/ --annotation-types EC
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types GO
-python bin/make_proteinfer_dataset.py --data-dir data/random_split/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-input-dir data/clustered_split/tfrecords/ --data-output-dir data/clustered_split/ --vocab-output-dir data/clustered_split/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-input-dir data/clustered_split/tfrecords/ --data-output-dir data/clustered_split/ --vocab-output-dir data/clustered_split/vocabularies/ --annotation-types EC
+python bin/make_proteinfer_dataset.py --data-input-dir data/random_split/tfrecords/ --data-output-dir data/random_split/ --vocab-output-dir data/random_split/vocabularies/ --annotation-types GO
+python bin/make_proteinfer_dataset.py --data-input-dir data/random_split/tfrecords/ --data-output-dir data/random_split/ --vocab-output-dir data/random_split/vocabularies/ --annotation-types EC
 conda activate proteinfertorch
 ```
 

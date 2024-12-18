@@ -1,3 +1,4 @@
+from proteinfertorch import CONFIG_FILE
 from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_yaml, to_device
@@ -10,8 +11,6 @@ import os
 
 
 """
-example usage: 
-- python bin/get_embeddings.py --data-path data/random_split/test_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
 
 """
 
@@ -22,18 +21,15 @@ logger = get_logger()
 # Arguments that must be parsed first
 parser_first = argparse.ArgumentParser(add_help=False)
 
-parser_first.add_argument('--config-dir',
+parser_first.add_argument('--config-path',
                     type=str,
-                    default="config",
-                    help="Path to the configuration directory (default: config)")
-
+                    default=CONFIG_FILE,
+                    required=False,
+                    help="Path to the configuration yaml path (default: config/config.yaml)")
 
 initial_args, _ = parser_first.parse_known_args()
 
-config = read_yaml(
-    os.path.join(initial_args.config_dir, "config.yaml")
-)
-
+config = read_yaml(initial_args.config_path)
 
 # Argument parser setup. The rest of the args are loaded after the initial args. All args are then updated with the initial args.
 parser = argparse.ArgumentParser(description="Inference with ProteInfer model.",parents=[parser_first])
@@ -44,6 +40,14 @@ parser.add_argument(
     required=True,
     help="Path to the data fasta file."
 )
+
+parser.add_argument(
+    "--fasta-separator",
+    type=str,
+    default=config["data"]["fasta_separator"],
+    help="The separator of the header (A.K.A. description or labels) in the FASTA file. If no headers"
+)
+
 
 parser.add_argument(
     "--weights-dir",
@@ -99,7 +103,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #Load datasets
 test_dataset = ProteinDataset(
         data_path = args.data_path,
-        logger=None
+        logger=None,
+        ignore_labels=True
         )
 
 dataset_specs = [{"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.batch_size}]

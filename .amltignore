@@ -2,7 +2,10 @@
 /*
 
 # But do not ignore the src folder and its contents, the config folder, and main.py
-!/src/
 !/bin/
+!/proteinfertorch/
 !*.py
+!*.md
+!*.yaml
+!.env
 !/config/

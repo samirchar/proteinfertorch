@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from proteinfertorch.collators import collate_variable_sequence_length
-from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies
+from proteinfertorch.utils import read_fasta, get_vocab_mappings, generate_vocabularies,read_json
 from itertools import product
 import numpy as np
 from torch.utils.data import RandomSampler
@@ -33,6 +33,8 @@ class ProteinDataset(Dataset):
         vocabulary_path: Optional[str] = None,
         deduplicate:bool = False,
         max_sequence_length:int = float("inf"),
+        fasta_separator: str = " ",
+        ignore_labels: bool = False,
         logger=None
         ):
         """
@@ -43,17 +45,24 @@ class ProteinDataset(Dataset):
         self.vocabulary_path = vocabulary_path
         self.deduplicate = deduplicate
         self.max_sequence_length = max_sequence_length
-        
-        self.data = read_fasta(data_path)
+        self.fasta_separator = fasta_separator
+        self.ignore_labels = ignore_labels
 
-        self.vocabulary_path = (
-            self.vocabulary_path
-            if self.vocabulary_path is not None
-            else self.data_path
-        )
+        # Load the data
+        self.data,self.has_labels = read_fasta(
+                               data_path = data_path,
+                               ignore_labels=self.ignore_labels,
+                               sep=self.fasta_separator)
+                
         self._preprocess_data(
-            vocabulary_path=self.vocabulary_path,
+            vocabulary_path=vocabulary_path
         )
+
+    def _preprocess_data(self, vocabulary_path:str):
+        self._clean_data()
+        self._parse_vocabulary(vocabulary_path = vocabulary_path)
+        self._process_vocab()
+
     def _clean_data(self):
         """
         Remove sequences that are too long or duplicated
@@ -71,16 +80,15 @@ class ProteinDataset(Dataset):
         self.data = clean_data
         del clean_data
 
-    def _preprocess_data(self, vocabulary_path: str):
-
-        self._clean_data()
-
-        vocabularies = generate_vocabularies(file_path=vocabulary_path)
-
+    def _parse_vocabulary(self, vocabulary_path: str):
+        if vocabulary_path is not None:
+            vocabularies = read_json(vocabulary_path)
+        else:
+            vocabularies = generate_vocabularies(data=self.data)
+                
         self.amino_acid_vocabulary = vocabularies["amino_acid_vocab"]
         self.label_vocabulary = vocabularies["label_vocab"]
         self.sequence_id_vocabulary = vocabularies["sequence_id_vocab"]
-        self._process_vocab()
 
     # Helper functions for processing and loading vocabularies
     def _process_vocab(self):
@@ -110,10 +118,6 @@ class ProteinDataset(Dataset):
         sequence_id_alphanumeric: str,
         labels: list[str],
     ) -> dict:
-        # One-hot encode the labels for use in the loss function (not a model input, so should not be impacted by augmentation)
-        labels_ints = torch.tensor(
-            [self.label2int[label] for label in labels], dtype=torch.long
-        )
 
         # Convert the sequence and labels to integers for one-hot encoding (impacted by augmentation)
         amino_acid_ints = torch.tensor(
@@ -127,9 +131,20 @@ class ProteinDataset(Dataset):
         sequence_onehots = torch.nn.functional.one_hot(
             amino_acid_ints, num_classes=len(self.amino_acid_vocabulary)
         ).permute(1, 0)
-        label_multihots = torch.nn.functional.one_hot(
-            labels_ints, num_classes=len(self.label_vocabulary)
-        ).sum(dim=0)
+
+
+
+        # One-hot encode the labels for use in the loss function (not a model input, so should not be impacted by augmentation)
+        if (self.has_labels) & (not self.ignore_labels):
+            labels_ints = torch.tensor(
+                [self.label2int[label] for label in labels], dtype=torch.long
+            )
+
+            label_multihots = torch.nn.functional.one_hot(
+                labels_ints, num_classes=len(self.label_vocabulary)
+            ).sum(dim=0)
+        else:
+            label_multihots = torch.tensor([])
 
         # Return a dict containing the processed example
         # NOTE: In the collator, we will use the label token counts for only the first sequence in the batch

@@ -6,8 +6,10 @@ target:
   name: msrresrchlab #msrresrchvc #msrresrchlab
   workspace_name: bio0-ext
 environment:
-  image: torch2.5.1cuda12.4:v3.0
+  image: torch2.5.1cuda12.4:v1.0
   registry: bio0extcr.azurecr.io
+  setup:
+  - pip install -e ./ --user
 
 code:
   local_dir: $CONFIG_DIR/ 
@@ -24,6 +26,7 @@ jobs:
   preemptible: False
   command:
   - python bin/train.py
+    --config-path config/config.yaml
     --train-data-path data/random_split/train_GO.fasta
     --validation-data-path data/random_split/dev_GO.fasta
     --test-data-path data/random_split/test_GO.fasta
