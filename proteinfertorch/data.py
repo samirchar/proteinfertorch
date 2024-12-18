@@ -34,7 +34,6 @@ class ProteinDataset(Dataset):
         deduplicate:bool = False,
         max_sequence_length:int = float("inf"),
         fasta_separator: str = " ",
-        fasta_no_labels_token: str = "<NO_LABELS>",
         ignore_labels: bool = False,
         logger=None
         ):
@@ -47,14 +46,12 @@ class ProteinDataset(Dataset):
         self.deduplicate = deduplicate
         self.max_sequence_length = max_sequence_length
         self.fasta_separator = fasta_separator
-        self.fasta_no_labels_token = fasta_no_labels_token
         self.ignore_labels = ignore_labels
 
         # Load the data
         self.data,self.has_labels = read_fasta(
                                data_path = data_path,
                                ignore_labels=self.ignore_labels,
-                               no_label_token=self.fasta_no_labels_token,
                                sep=self.fasta_separator)
                 
         self._preprocess_data(
@@ -121,10 +118,6 @@ class ProteinDataset(Dataset):
         sequence_id_alphanumeric: str,
         labels: list[str],
     ) -> dict:
-        # One-hot encode the labels for use in the loss function (not a model input, so should not be impacted by augmentation)
-        labels_ints = torch.tensor(
-            [self.label2int[label] for label in labels], dtype=torch.long
-        )
 
         # Convert the sequence and labels to integers for one-hot encoding (impacted by augmentation)
         amino_acid_ints = torch.tensor(
@@ -138,9 +131,20 @@ class ProteinDataset(Dataset):
         sequence_onehots = torch.nn.functional.one_hot(
             amino_acid_ints, num_classes=len(self.amino_acid_vocabulary)
         ).permute(1, 0)
-        label_multihots = torch.nn.functional.one_hot(
-            labels_ints, num_classes=len(self.label_vocabulary)
-        ).sum(dim=0)
+
+
+
+        # One-hot encode the labels for use in the loss function (not a model input, so should not be impacted by augmentation)
+        if (self.has_labels) & (not self.ignore_labels):
+            labels_ints = torch.tensor(
+                [self.label2int[label] for label in labels], dtype=torch.long
+            )
+
+            label_multihots = torch.nn.functional.one_hot(
+                labels_ints, num_classes=len(self.label_vocabulary)
+            ).sum(dim=0)
+        else:
+            label_multihots = torch.tensor([])
 
         # Return a dict containing the processed example
         # NOTE: In the collator, we will use the label token counts for only the first sequence in the batch

@@ -180,8 +180,7 @@ def read_pickle(file_path: str):
 
 def read_fasta(data_path: str,
                sep: str =" ",
-               ignore_labels = False,
-               no_label_token: str = "<NO_LABEL>"
+               ignore_labels = False
                ):
     """
     Reads a FASTA file and returns a list of tuples containing sequences, ids, and labels.
@@ -194,16 +193,15 @@ def read_fasta(data_path: str,
 
 
         # always return dummy labels unless we are not ignoring the labels and the labels are present
-        labels = [no_label_token]
+        labels = []
         has_labels = False
         
-        if not ignore_labels:
-            # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
-            temp = record.description.split(sep)[1:]
-            has_labels = len(temp) > 1
+        # labels[0] contains the sequence ID, and the rest of the labels are GO terms.
+        temp = record.description.split(sep)[1:] 
+        has_labels = len(temp) > 0
 
-            if has_labels:
-                labels = temp
+        if has_labels and not ignore_labels:
+            labels = temp
 
         # Return a tuple of sequence, sequence_id, and labels
         sequences_with_ids_and_labels.append((sequence, sequence_id, labels))

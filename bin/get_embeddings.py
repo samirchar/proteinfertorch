@@ -11,8 +11,6 @@ import os
 
 
 """
-example usage: 
-- python bin/get_embeddings.py --data-path data/random_split/test_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645
 
 """
 
@@ -105,7 +103,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #Load datasets
 test_dataset = ProteinDataset(
         data_path = args.data_path,
-        logger=None
+        logger=None,
+        ignore_labels=True
         )
 
 dataset_specs = [{"dataset": test_dataset,"name":"test","shuffle": False,"drop_last": False,"batch_size": args.batch_size}]

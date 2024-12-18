@@ -63,7 +63,7 @@ parser.add_argument(
     type=str,
     required=True,
     help="Path to the vocabulary file"
-)  #TODO: instead of inferring vocab from fasta everytime, should create static vocab json
+) 
 
 parser.add_argument(
     "--weights-dir",
