@@ -571,7 +571,7 @@ If you use this model in your work, I would greatly appreciate it if you could c
   year={{2024}},
   month={{12}},
   day={{08}},
-  doi={{10.5281/zenodo.1234567}},
+  doi={{10.5281/zenodo.14514368}},
   url={{https://github.com/samirchar/proteinfertorch}}
 }}
 ```
