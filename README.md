@@ -21,11 +21,13 @@ The table below summarizes ProteInferTorch's performance on the original ProteIn
 TODO: ProteInferTorch's performance when training from scratch (i.e., random weights)
 
 ## Table Of Contents
+
 <!-- toc -->
 
 - [Installation](#installation)
 - [Config](#config)
 - [Data](#data)
+- [Input data format](#input-data-format)
 - [Inference](#inference)
 - [Extract Embeddings](#extract-embeddings)
 - [Train](#train)
@@ -74,7 +76,7 @@ To run inference simply run and evaluate model performance run:
 python bin/inference.py --data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir samirchar/proteinfertorch-go-random-13731645
 ```
 
-To save the prediction logits, probabilities and labels, add the flag --save-prediction-results
+To save the prediction logits, probabilities and labels, add the flag --save-prediction-results. For EC numers use the full_EC.json vocabulary.
 
 
 ## Extract Embeddings
@@ -95,8 +97,10 @@ python bin/train.py --train-data-path data/random_split/train_GO.fasta --validat
 
 To start from pretrained weights:
 ```
-python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/full_GO.fasta --weights-dir samirchar/proteinfertorch-go-random-13731645 
+python bin/train.py --train-data-path data/random_split/train_GO.fasta --validation-data-path data/random_split/dev_GO.fasta --test-data-path data/random_split/test_GO.fasta --vocabulary-path data/random_split/vocabularies/full_GO.json --weights-dir samirchar/proteinfertorch-go-random-13731645 
 ```
+
+For EC numers use the full_EC.json vocabulary.
 
 ## Citation
 
