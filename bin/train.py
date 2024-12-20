@@ -443,10 +443,6 @@ def evaluate(loader, model, metric_collection, loss_fn, device, prob_norm=None):
                     device=device,
                 )
 
-            #Create CPU Versions
-            # label_multihots = label_multihots.cpu()
-            # probabilities = probabilities.cpu()
-
             #Create flattened versions
             label_multihots_flat = label_multihots.flatten()
             probabilities_flat = probabilities.flatten()
@@ -473,10 +469,7 @@ def train(gpu,args):
     load_dotenv()
 
 
-
-    # Calculate GPU rank (based on node rank and GPU rank within the node) and initialize process group
-    args.rank = args.nr * args.gpus + gpu
-    
+    # Calculate GPU rank (based on node rank and GPU rank within the node) and initialize process group   
     rank = args.nr * args.gpus + gpu
 
     if args.world_size > 1:
@@ -494,9 +487,26 @@ def train(gpu,args):
     # Check if master process
     is_master = rank == 0
 
+    if args.amlt:
+        ROOT_PATH = os.environ["AMLT_DATA_DIR"]
+        OUTPUT_PATH = os.environ["AMLT_OUTPUT_DIR"]
+        if is_master:
+            logger.info(f"AMLT Data Directory: {ROOT_PATH}")
+            logger.info(f"AMLT Output Directory: {OUTPUT_PATH}")
+
+        #Read all paths based on approriate parent directory: train, validation, test, vocabulary, output, parenthood
+        args.train_data_path = os.path.join(ROOT_PATH, args.train_data_path)
+        args.validation_data_path = os.path.join(ROOT_PATH, args.validation_data_path)
+        args.test_data_path = os.path.join(ROOT_PATH, args.test_data_path)
+        args.vocabulary_path = os.path.join(ROOT_PATH, args.vocabulary_path)
+        args.parenthood_path = os.path.join(ROOT_PATH, args.parenthood_path) if args.parenthood_path is not None else None
+        args.output_dir = os.path.join(OUTPUT_PATH, args.output_dir)
+
+
     # Set the GPU device, if using
     torch.cuda.set_device(rank)
     device = torch.device("cuda:" + str(rank) if torch.cuda.is_available() else "cpu")
+    cpu_device = torch.device("cpu")
 
     if is_master:
         logger.info(f"Using device: {device}")
@@ -604,7 +614,7 @@ def train(gpu,args):
             bottleneck_factor=args.bottleneck_factor,
         ).to(device)
 
-
+ 
     # Wrap the model in DDP for distributed computing and sync batchnorm if needed.
     # TODO: This may be more flexible to allow for layer norm.
     if args.world_size > 1:
@@ -613,8 +623,8 @@ def train(gpu,args):
 
     #Define metrics
     metric_collection_eval = {
-        "map_micro": BinaryAUPRC(device="cpu") if args.map_bins is None else BinaryBinnedAUPRC(device="cpu", threshold=args.map_bins),
-        "map_macro": MultilabelAUPRC(device="cpu", num_labels=num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device="cpu", num_labels=num_labels, threshold=args.map_bins),
+        "map_micro": BinaryAUPRC(device=cpu_device) if args.map_bins is None else BinaryBinnedAUPRC(device=cpu_device, threshold=args.map_bins),
+        "map_macro": MultilabelAUPRC(device=cpu_device, num_labels=num_labels) if args.map_bins is None else MultilabelBinnedAUPRC(device=cpu_device, num_labels=num_labels, threshold=args.map_bins),
         "f1_micro": BinaryF1Score(device=device, threshold=args.threshold),
         "avg_loss":  Mean(device=device)
     }
@@ -634,7 +644,9 @@ def train(gpu,args):
                                 )
 
     lr_decay_schedule = LambdaLR(optimizer = optimizer,
-                                    lr_lambda=ExponentialDecay(decay_steps=args.lr_decay_steps, decay_rate=args.lr_decay, staircase=args.lr_scheduler_staircase)
+                                    lr_lambda=ExponentialDecay(decay_steps=args.lr_decay_steps,
+                                                               decay_rate=args.lr_decay,
+                                                               staircase=args.lr_scheduler_staircase)
                                     )
 
     lr_scheduler = SequentialLR(optimizer=optimizer,
@@ -646,7 +658,7 @@ def train(gpu,args):
     model.train() #Set the model to training mode
 
     # Watch the model with W&B
-    if args.use_wandb:
+    if is_master and args.use_wandb:
         wandb.watch(model, log = 'gradients')
 
     for epoch in range(args.epochs):
@@ -682,16 +694,7 @@ def train(gpu,args):
                 device, sequence_onehots, sequence_lengths, label_multihots
             )
 
-            max_seq_length,min_seq_length = sequence_lengths.max().item(),sequence_lengths.min().item() #TODO: remove this
 
-            if is_master and args.use_wandb:
-                wandb.log(
-                    {"max_seq_length": max_seq_length,
-                    "min_seq_length": min_seq_length,
-                    "max_to_min_seq_length_ratio": max_seq_length/min_seq_length},
-                    step=global_step
-                )
-                
             with torch.amp.autocast(enabled=True,device_type=device.type): 
                 # Forward pass
                 logits = model(sequence_onehots, sequence_lengths)
@@ -730,20 +733,18 @@ def train(gpu,args):
 
                 
 
-                if is_master and args.use_wandb:
-                    wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
-                    wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
+                # if is_master and args.use_wandb:
+                #     wandb.log({"per_batch_learning_rate": optimizer.param_groups[0]["lr"]}, step=global_step)
+                #     wandb.log({"per_batch_loss": loss.item()}, step=global_step) #TODO: this is not the average loss, but the loss for the last batch. Good enough for debugging.
 
             metric_collection_train["f1_micro"].update(logits.detach().flatten(), label_multihots.detach().flatten())
             metric_collection_train["avg_loss"].update(loss.detach())
-            
-        
-        
+                   
             
         #Compute train and validation epoch metrics
         train_metrics = sync_and_compute_collection(metric_collection_train)
         train_metrics = {f"train_{k}": v.item() if isinstance(v, torch.Tensor) else v for k, v in train_metrics.items()}
-        
+                
         # Log metrics
         if is_master:
             logger.info(f"Finished epoch {epoch}")
@@ -754,7 +755,7 @@ def train(gpu,args):
                               "learning_rate": optimizer.param_groups[0]["lr"]}}, step=global_step)
 
         # Validation every args.epochs_per_validation
-        if (epoch + 1) % args.epochs_per_validation == 0:
+        if ((epoch + 1) % args.epochs_per_validation == 0) or (epoch + 1 == args.epochs):
             validation_metrics = evaluate(loader=loaders["validation"],
                                     model=model,
                                     metric_collection=metric_collection_eval,
@@ -795,11 +796,6 @@ def train(gpu,args):
     # W&B, MLFlow amd optional metric results saving
     if is_master:
         logger.info(f"\n{'='*100}\nTraining  COMPLETE\n{'='*100}\n")
-        # Optionally save val/test results in json
-        # if args.save_metric_collection_eval:
-        #     metrics_results.append(run_metrics)
-        #     write_json(metrics_results, args.save_metric_collection_eval_file)
-
         # Close metric loggers
         if args.use_wandb:
             wandb.finish()

@@ -69,10 +69,13 @@ args = parser.parse_args()
 
 assert not (args.push_to_hub ^ (args.hf_username is not None)), "Please provide both hf_username and push_to_hub or neither"
 
+
+### Upload Models to Huggingface Hub ###
 #Process all weights in tf_weights
 model_weights = os.listdir(args.input_dir)
 base_architecture = config['base_architecture']
 p = re.compile(f"{args.regex_pattern}")
+
 for model_weight in model_weights:
     if p.match(model_weight):
         task,data_split,model_id= model_weight.split("-")

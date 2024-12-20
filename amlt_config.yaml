@@ -16,12 +16,12 @@ code:
 
 data:
   local_dir: $CONFIG_DIR/data
-  remote_dir: data
+  remote_dir: "."
 
 # SKU usage: G1 (single GPU), G4 (quad GPU), G4-V100 (1 machine, 4 V100 gpus), etc...
 jobs:
 - name: 'proteinfertorch_test' 
-  sku: G8-V100 #80G4-A100-NvLink #G8-V100
+  sku: G8-V100 #G8-V100 #80G4-A100-NvLink #G8-V100
   priority: high
   preemptible: False
   command:
@@ -30,14 +30,18 @@ jobs:
     --train-data-path data/random_split/train_GO.fasta
     --validation-data-path data/random_split/dev_GO.fasta
     --test-data-path data/random_split/test_GO.fasta
-    --vocabulary-path data/random_split/full_GO.fasta
+    --vocabulary-path data/random_split/vocabularies/full_GO.json
     --threshold 0.5
+    --map-bins 50
     --use-wandb
+    --amlt
     --name go-random
     --nodes 1
-    --gpus 8
+    --gpus 8 # 8, 4
   submit_args:
     env:
       WANDB_BASE_URL: "https://microsoft-research.wandb.io"
       WANDB_API_KEY: "$WANDB_API_KEY"
       _AZUREML_SINGULARITY_JOB_UAI:  /subscriptions/7be94754-107d-43b8-b840-202dff0e7cae/resourceGroups/bio0-ext/providers/Microsoft.ManagedIdentity/userAssignedIdentities/bio0-ext-uai
+
+

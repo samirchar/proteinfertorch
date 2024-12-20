@@ -208,6 +208,50 @@ def read_fasta(data_path: str,
 
     return sequences_with_ids_and_labels, has_labels
 
+import requests
+from io import StringIO
+import re
+from urllib.parse import urlparse, quote
+
+
+def get_huggingface_url(repo_id: str, data_path: str):
+    return quote(f"https://huggingface.co/datasets/{repo_id}/resolve/main/{data_path}", safe="/:")
+
+def is_valid_url(url):
+    parsed = urlparse(url)
+    return all([parsed.scheme, parsed.netloc])
+
+class ReadFasta:
+
+    def __init__(self, data_path: str, sep: str = " ", ignore_labels: bool = False):
+        self.data_path = data_path
+        self.sep = sep
+        self.ignore_labels = ignore_labels
+        self.huggingface_url_pattern = r"^https://huggingface\.co/datasets/.+/resolve/main/.+$"
+    def _from_local(self):
+        return read_fasta(self.data_path, self.sep, self.ignore_labels)
+    
+    def _from_huggingface_url(self, url: str):
+        if not re.match(self.huggingface_url_pattern, url):
+            raise ValueError(f"The URL does not match the expected pattern: {url}")
+        
+        response = requests.get(url)
+        response.raise_for_status()  # Ensure the request was successful
+
+        content = StringIO(response.text)
+        return read_fasta(content, self.sep, self.ignore_labels)
+
+    def __call__(self):
+        if is_valid_url(self.data_path):
+            return self._from_huggingface_url(self.data_path)
+        else:
+            return self._from_local()
+
+
+    
+    
+        
+
 
 def save_to_pickle(item, file_path: str):
     with open(file_path, "wb") as p:
