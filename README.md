@@ -8,7 +8,7 @@ ProteInfer is a model for protein function prediction that is trained to predict
 
 This repo contains PyTorch code to run inference, train, or extract embeddings for four ProteInfer models - one for each task/data split combination. All model weights are hosted in [Hugging Face 🤗](https://huggingface.co/samirchar).
 
-The table below summarizes ProteInferTorch's performance on the original ProteInfer test sets using the Pytorch converted weights:
+The table below summarizes ProteInferTorch's F1 Micro performance on the original ProteInfer test sets using the Pytorch converted weights:
 
 | Data Split | Task  | ProteInfer  | ProteInferTorch | Weights 🤗 |
 |------------|-------|-------------|-----------------|------------|

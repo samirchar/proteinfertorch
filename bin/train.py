@@ -778,6 +778,7 @@ def train(gpu,args):
                 & (not args.no_checkpoints)
                 ):
                 if validation_metrics["validation_avg_loss"] < best_validation_loss:
+                    logger.info(f"New best validation loss: {validation_metrics['validation_avg_loss']}, saving model checkpoint")
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_best_checkpoint_{timestamp}.pt")
                 elif args.always_save_checkpoint:
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_checkpoint_epoch_{epoch}_{timestamp}.pt")
