@@ -19,6 +19,9 @@ The table below summarizes ProteInferTorch's F1 Micro performance on the origina
 
 
 TODO: ProteInferTorch's performance when training from scratch (i.e., random weights)
+Using the training script and an 8-V100 GPU cluster, ProteinferTorch achieves XX F1 Micro on the GO task for the random split test set after XX epochs. 
+
+TODO: Instert train/val plot
 
 ## Table Of Contents
 

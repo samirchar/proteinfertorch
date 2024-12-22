@@ -246,11 +246,12 @@ def main():
     )
 
     parser.add_argument(
-        "--always-save-checkpoint",
-        action="store_true",
-        default=False,
-        help="Save the model checkpoint after every validation"
+        "--epochs-per-checkpoint",
+        type=int,
+        default=config["train"]["epochs_per_checkpoint"],
+        help="Number of epochs between each checkpoint, independent of best model checkpoint"
     )
+
 
     parser.add_argument(
         "--no-checkpoints",
@@ -654,7 +655,7 @@ def train(gpu,args):
                                 milestones=[args.lr_warmup_steps])
     
     ## TRAINING LOOP ##
-    best_validation_loss = float("inf")
+    best_validation_metric = 0
     model.train() #Set the model to training mode
 
     # Watch the model with W&B
@@ -773,24 +774,25 @@ def train(gpu,args):
                     wandb.log(validation_metrics, step=global_step)
 
             # Save model checkpoint
-            if (is_master 
-                & (args.always_save_checkpoint or validation_metrics["validation_avg_loss"] < best_validation_loss)
-                & (not args.no_checkpoints)
-                ):
-                if validation_metrics["validation_avg_loss"] < best_validation_loss:
-                    logger.info(f"New best validation loss: {validation_metrics['validation_avg_loss']}, saving model checkpoint")
+            checkpoint_path = None
+            if (is_master & (not args.no_checkpoints)):
+                if validation_metrics["validation_f1_micro"] > best_validation_metric:
+                    logger.info(f"New best validation metric: {validation_metrics['validation_f1_micro']}, saving model checkpoint")
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_best_checkpoint_{timestamp}.pt")
-                elif args.always_save_checkpoint:
+                    best_validation_metric = validation_metrics["validation_f1_micro"]
+                elif ((epoch + 1) % args.epochs_per_checkpoint) == 0:
+                    logger.info(f"Saving model checkpoint for epoch {epoch + 1} / {args.epochs}")
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_checkpoint_epoch_{epoch}_{timestamp}.pt")
 
-                save_checkpoint(model = get_model(model),
-                                optimizer = optimizer,
-                                epoch = epoch,
-                                validation_metrics = validation_metrics,
-                                train_metrics = train_metrics,
-                                model_path = checkpoint_path
-                                )
-                best_validation_loss = validation_metrics["validation_avg_loss"]
+                if checkpoint_path is not None:
+                    save_checkpoint(model = get_model(model),
+                                    optimizer = optimizer,
+                                    epoch = epoch,
+                                    validation_metrics = validation_metrics,
+                                    train_metrics = train_metrics,
+                                    model_path = checkpoint_path
+                                    )
+
     
     ####### CLEANUP #######
 

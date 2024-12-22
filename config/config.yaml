@@ -1,6 +1,6 @@
 train:
   train_batch_size: 40 # per gpu for 8 gpus. Set to 320 for 1 gpu.
-  test_batch_size: 128
+  test_batch_size: 256
   threshold: 0.88134765625
   num_workers: 2
   pin_memory: true
@@ -16,6 +16,7 @@ train:
   seed: 42
   gradient_clip: 1
   epochs_per_validation: 1
+  epochs_per_checkpoint: 10
   gradient_accumulation_steps: 1
 
 
