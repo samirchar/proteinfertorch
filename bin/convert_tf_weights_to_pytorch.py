@@ -96,7 +96,7 @@ for model_weight in model_weights:
             bottleneck_factor=base_architecture["bottleneck_factor"],
         )
         model_name = f"{task}-{data_split}-{model_id}"
-        model.save_pretrained(os.path.join(args.output_dir,f"{model_name}")) 
+        model.save_pretrained(os.path.join(args.output_dir,f"{model_name}"))
         
         if args.push_to_hub:
             card = ModelCard(

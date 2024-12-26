@@ -2,7 +2,7 @@ from proteinfertorch.proteinfer import ProteInfer
 from proteinfertorch.data import ProteinDataset, create_multiple_loaders
 from proteinfertorch.utils import read_json, read_yaml, to_device, save_checkpoint
 from proteinfertorch.config import get_logger, ACTIVATION_MAP
-from proteinfertorch.utils import save_evaluation_results, probability_normalizer, seed_everything, get_model
+from proteinfertorch.utils import save_evaluation_results, probability_normalizer, seed_everything, get_model,load_checkpoint
 from proteinfertorch import CONFIG_FILE
 import torch
 import numpy as np
@@ -104,6 +104,14 @@ def main():
         required=False,
         default=None,
         help="Directory to the model weights either on huggingface or local. If not provided, a new model will be initialized."
+    )
+
+    parser.add_argument(
+        "--checkpoint-path",
+        type=str,
+        required=False,
+        default=None,
+        help="Path to the checkpoint path with model weights and state dicts to resume training"
     )
 
     parser.add_argument(
@@ -567,6 +575,10 @@ def train(gpu,args):
     # Assert dataset has labels
     assert train_dataset.has_labels & test_dataset.has_labels & validation_dataset.has_labels, "All datasets must have labels for training"
 
+    # Assert both weights-dir and checkpoint-dir are not provided at the same time
+    assert (args.weights_dir is None) or (args.checkpoint_path is None), "Both weights-dir and checkpoint-dir can't be provided at the same time"
+
+
     num_labels = len(train_dataset.label_vocabulary)
 
     data_loader_specs = [
@@ -654,10 +666,28 @@ def train(gpu,args):
                                 schedulers = [lr_warmup_scheule, lr_decay_schedule],
                                 milestones=[args.lr_warmup_steps])
     
+
     ## TRAINING LOOP ##
     best_validation_metric = 0
     model.train() #Set the model to training mode
 
+    if args.checkpoint_path is not None:
+        # Load model from checkpoint
+        if is_master:
+            logger.info(f"Loading model from checkpoint in {args.checkpoint_path}")
+        
+        (   model,
+            optimizer,
+            lr_scheduler,
+            metadata) =  load_checkpoint(
+                                model=model,
+                                optimizer=optimizer,
+                                checkpoint_path=args.checkpoint_path,
+                                rank = rank,
+                                lr_scheduler=lr_scheduler)
+        if is_master:
+            logger.info(f"Checkpoint metadata: {metadata}")
+            
     # Watch the model with W&B
     if is_master and args.use_wandb:
         wandb.watch(model, log = 'gradients')
@@ -785,6 +815,9 @@ def train(gpu,args):
                     checkpoint_path = os.path.join(args.output_dir,"checkpoints", f"{args.name}_checkpoint_epoch_{epoch}_{timestamp}.pt")
 
                 if checkpoint_path is not None:
+                    
+                    # get_model(model).save_pretrained(checkpoint_path,push_to_hub=False)
+                    #TODO: it would be nice to save checkpoints with huggingface save_pretrained or similar.
                     save_checkpoint(model = get_model(model),
                                     optimizer = optimizer,
                                     epoch = epoch,

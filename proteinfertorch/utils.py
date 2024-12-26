@@ -495,27 +495,70 @@ def seed_everything(seed: int, device: str):
     transformers.set_seed(seed)
 
 
-def save_checkpoint(model, optimizer, epoch, train_metrics, validation_metrics, model_path):
+def save_checkpoint(model,
+                    optimizer,
+                    epoch,
+                    train_metrics,
+                    validation_metrics,
+                    model_path,
+                    lr_scheduler=None
+                    ):
     """
     Save model and optimizer states as a checkpoint.
 
-    Args:
-    - model (torch.nn.Module): The model whose state we want to save.
-    - optimizer (torch.optim.Optimizer): The optimizer whose state we want to save.
-    - epoch (int): The current training epoch.
-    - model_path (str): The path where the checkpoint will be saved.
     """
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
+        "lr_scheduler_state_dict": lr_scheduler.state_dict() if lr_scheduler is not None else None,
         "validation_metrics": validation_metrics,
         "train_metrics": train_metrics
     }
 
+
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
 
     torch.save(checkpoint, model_path)
+
+def load_checkpoint(
+               model,
+               optimizer,
+               checkpoint_path: str,
+               rank: int,
+               lr_scheduler=None):
+    """
+    Load the model's state from a given checkpoint.
+
+    Note:
+    The function assumes that the model in the trainer object is NOT DDP-wrapped.
+    """
+    torch.cuda.empty_cache()
+
+    # Load the entire checkpoint
+    map_location = {"cuda:%d" % 0: "cuda:%d" % rank}
+    checkpoint = torch.load(checkpoint_path, map_location=map_location)
+
+    # Extract the state_dict from the checkpoint
+    state_dict = checkpoint["model_state_dict"]
+
+    # Load the state_dict into the model
+    model.load_state_dict(state_dict)
+
+    metadata = {}
+    # Load the optimizer state and epoch number if they exist in the checkpoint
+    if checkpoint["optimizer_state_dict"]:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    if checkpoint["epoch"]:
+        metadata.update(checkpoint["epoch"])
+    if checkpoint["validation_metrics"]:
+        metadata.update(checkpoint["validation_metrics"])
+    if checkpoint["train_metrics"]:
+        metadata.update(checkpoint["train_metrics"])
+    if checkpoint["lr_scheduler_state_dict"]:
+        lr_scheduler.load_state_dict(checkpoint["lr_scheduler_state_dict"])
+    
+    return model, optimizer, lr_scheduler, metadata
 
 
 # function that returns model.module if model is a DistributedDataParallel object
