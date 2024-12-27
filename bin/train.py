@@ -669,6 +669,8 @@ def train(gpu,args):
 
     ## TRAINING LOOP ##
     best_validation_metric = 0
+    first_epoch = 0
+    last_epoch = args.epochs + first_epoch - 1
     model.train() #Set the model to training mode
 
     if args.checkpoint_path is not None:
@@ -692,9 +694,9 @@ def train(gpu,args):
     if is_master and args.use_wandb:
         wandb.watch(model, log = 'gradients')
 
-    for epoch in range(args.epochs):
+    for epoch in range(first_epoch, 1000):
         if is_master:
-            logger.info(f"Starting epoch {epoch + 1} / {args.epochs}")
+            logger.info(f"Starting epoch {epoch} / {last_epoch}")
         reset_metrics(metric_collection_train.values()) #Reset metrics for the epoch
 
         #Set the epoch for the sampler to shuffle the data
@@ -726,11 +728,10 @@ def train(gpu,args):
             )
 
 
-            with torch.amp.autocast(enabled=True,device_type=device.type): 
+            with torch.amp.autocast(enabled=False,device_type=device.type): 
                 # Forward pass
                 logits = model(sequence_onehots, sequence_lengths)
                 
-
                 # Compute loss, normalized by the number of gradient accumulation step  
                 loss = loss_fn(logits, label_multihots.float())
                 scaled_loss = loss / args.gradient_accumulation_steps
@@ -739,7 +740,6 @@ def train(gpu,args):
             # Backward pass with mixed precision
             scaler.scale(scaled_loss).backward()
             
-
             # Gradient accumulation every gradient_accumulation_steps or at the end of the epoch
             if (batch_idx % args.gradient_accumulation_steps == 0) or ( 
                 batch_idx + 1 == len(loaders["train"])
@@ -752,6 +752,7 @@ def train(gpu,args):
                     clip_grad_norm_(
                         get_model(model).parameters(), max_norm=args.gradient_clip
                     )
+
                 #optimization step
                 scaler.step(optimizer)
                 scaler.update()
@@ -786,7 +787,7 @@ def train(gpu,args):
                               "learning_rate": optimizer.param_groups[0]["lr"]}}, step=global_step)
 
         # Validation every args.epochs_per_validation
-        if ((epoch + 1) % args.epochs_per_validation == 0) or (epoch + 1 == args.epochs):
+        if (epoch % args.epochs_per_validation == 0) or (epoch + 1 == args.epochs):
             validation_metrics = evaluate(loader=loaders["validation"],
                                     model=model,
                                     metric_collection=metric_collection_eval,

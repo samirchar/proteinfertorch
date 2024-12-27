@@ -550,7 +550,7 @@ def load_checkpoint(
     if checkpoint["optimizer_state_dict"]:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     if checkpoint["epoch"]:
-        metadata.update(checkpoint["epoch"])
+        metadata['epoch'] = checkpoint["epoch"]
     if checkpoint["validation_metrics"]:
         metadata.update(checkpoint["validation_metrics"])
     if checkpoint["train_metrics"]:
