@@ -110,7 +110,7 @@ For EC numers use the full_EC.json vocabulary.
 If you use this model in your work, I would greatly appreciate it if you could cite it as follows:
 
 ```bibtex
-@misc{yourname2024pytorchmodel,
+@misc{char2024pytorchmodel,
   title={ProteInferTorch: a PyTorch implementation of ProteInfer},
   version={v1.0.0},
   author={Samir Char},
